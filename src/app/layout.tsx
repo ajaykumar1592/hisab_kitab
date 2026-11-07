@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { LanguageProvider } from "@/lib/i18n";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,7 +49,9 @@ export default function RootLayout({
       <head />
       <body className="min-h-full flex flex-col bg-gray-50" suppressHydrationWarning>
         <PWARegistrationScript />
-        {children}
+        <LanguageProvider>
+          {children}
+        </LanguageProvider>
       </body>
     </html>
   );

@@ -11,8 +11,9 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CheckCircle2, AlertCircle, Save, Building2, Globe, CreditCard, Bell, Shield, Smartphone, FileText } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, Save, Building2, Globe, CreditCard, Bell, Shield, Smartphone, FileText, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useTranslation, Language } from '@/lib/i18n';
 
 interface Business {
   id: string;
@@ -78,16 +79,8 @@ const currencies = [
 ];
 
 const languages = [
-  { code: 'en', name: 'English' },
-  { code: 'hi', name: 'Hindi' },
-  { code: 'gu', name: 'Gujarati' },
-  { code: 'mr', name: 'Marathi' },
-  { code: 'ta', name: 'Tamil' },
-  { code: 'te', name: 'Telugu' },
-  { code: 'kn', name: 'Kannada' },
-  { code: 'ml', name: 'Malayalam' },
-  { code: 'bn', name: 'Bengali' },
-  { code: 'pa', name: 'Punjabi' },
+  { code: 'en', name: 'English (अंग्रेज़ी)' },
+  { code: 'hi', name: 'हिन्दी (Hindi)' },
 ];
 
 const businessTypes = [
@@ -110,9 +103,13 @@ const states = [
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { t, language, setLanguage } = useTranslation();
   const [activeTab, setActiveTab] = useState<'general' | 'whatsapp' | 'notifications' | 'advanced'>('general');
   const [business, setBusiness] = useState<Business>(mockBusiness);
-  const [settings, setSettings] = useState<BusinessSettings>(mockSettings);
+  const [settings, setSettings] = useState<BusinessSettings>({
+    ...mockSettings,
+    default_language: language,
+  });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,18 +159,28 @@ export default function SettingsPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Page Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-          <p className="text-gray-500">Manage your business settings and preferences</p>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {language === 'hi' ? 'व्यापार सेटिंग्स (Settings)' : 'Settings'}
+          </h1>
+          <p className="text-gray-500">
+            {language === 'hi' ? 'अपनी व्यापार सेटिंग्स, भाषा और प्राथमिकताएं प्रबंधित करें' : 'Manage your business settings and preferences'}
+          </p>
         </div>
-        <div className="hidden sm:block">
-          <Link href="/dashboard/settings/whatsapp">
-            <Button variant="outline">
+        <div className="flex items-center gap-2">
+          <Button variant="outline" asChild className="border-blue-200 text-blue-700 hover:bg-blue-50">
+            <Link href="/dashboard/settings/categories">
+              <Layers className="mr-2 h-4 w-4" />
+              {language === 'hi' ? 'सामग्री श्रेणियाँ' : 'Material Categories'}
+            </Link>
+          </Button>
+          <Button variant="outline" asChild className="hidden sm:inline-flex">
+            <Link href="/dashboard/settings/whatsapp">
               <Smartphone className="mr-2 h-4 w-4" />
-              WhatsApp Integration
-            </Button>
-          </Link>
+              WhatsApp
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -382,17 +389,27 @@ export default function SettingsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="default_language">Default Language</Label>
+                  <Label htmlFor="default_language" className="font-semibold text-blue-900 flex items-center gap-1.5">
+                    <Globe className="h-4 w-4 text-blue-600" />
+                    {language === 'hi' ? 'ऐप की भाषा (Application Language)' : 'Application Language'}
+                  </Label>
                   <Select
-                    value={settings.default_language}
-                    onValueChange={value => handleSettingsChange('default_language', value)}
+                    value={language}
+                    onValueChange={(value: Language) => {
+                      setLanguage(value);
+                      handleSettingsChange('default_language', value);
+                      setSuccess(value === 'hi' ? 'भाषा बदलकर हिन्दी कर दी गई है!' : 'Language changed to English!');
+                      setTimeout(() => setSuccess(null), 3000);
+                    }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="border-blue-300 bg-blue-50/50 font-medium">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {languages.map(lang => (
-                        <SelectItem key={lang.code} value={lang.code}>{lang.name}</SelectItem>
+                        <SelectItem key={lang.code} value={lang.code} className="font-medium">
+                          {lang.name}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>

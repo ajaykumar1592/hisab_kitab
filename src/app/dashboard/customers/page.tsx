@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Plus, Search, Filter, MoreVertical, Edit, Eye, Trash2, Phone, MessageSquare, CreditCard } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { format } from 'date-fns';
+import { useTranslation } from '@/lib/i18n';
 
 interface Customer {
   id: string;
@@ -24,6 +25,7 @@ interface Customer {
 
 export default function CustomersPage() {
   const router = useRouter();
+  const { t, language } = useTranslation();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('active');
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -145,13 +147,13 @@ export default function CustomersPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
-          <p className="text-gray-500">Manage your customer accounts</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('customers')}</h1>
+          <p className="text-gray-500">{t('manageCustomers')}</p>
         </div>
         <Link href="/dashboard/customers/new">
           <Button>
             <Plus className="mr-2 h-4 w-4" />
-            Add Customer
+            {t('addCustomer')}
           </Button>
         </Link>
       </div>
@@ -163,7 +165,7 @@ export default function CustomersPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="Search by name, mobile..."
+                placeholder={t('searchPlaceholder')}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
@@ -171,12 +173,12 @@ export default function CustomersPage() {
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder={t('status')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
+                <SelectItem value="all">{t('all')}</SelectItem>
+                <SelectItem value="active">{t('active')}</SelectItem>
+                <SelectItem value="archived">{t('archived')}</SelectItem>
               </SelectContent>
             </Select>
           </div>

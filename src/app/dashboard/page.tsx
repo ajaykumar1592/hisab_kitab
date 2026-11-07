@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Users, TrendingUp, CreditCard, Package, Plus, Clock, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { format } from 'date-fns';
+import { useTranslation } from '@/lib/i18n';
 
 interface DashboardStats {
   total_customers: number;
@@ -88,6 +89,7 @@ const defaultStats: DashboardStats = {
 };
 
 export default function DashboardPage() {
+  const { t, language } = useTranslation();
   const [stats, setStats] = useState<DashboardStats>(defaultStats);
 
   useEffect(() => {
@@ -109,29 +111,29 @@ export default function DashboardPage() {
 
   const statCards = [
     {
-      title: 'Total Customers',
+      title: t('totalCustomers'),
       value: stats.total_customers.toLocaleString('en-IN'),
       icon: Users,
       color: 'bg-blue-500',
       href: '/dashboard/customers',
     },
     {
-      title: 'Total Receivable',
+      title: t('totalReceivable'),
       value: formatCurrency(stats.total_receivable),
       icon: TrendingUp,
       color: 'bg-green-500',
       href: '/dashboard/reports',
     },
     {
-      title: 'Total Payable',
+      title: t('totalPayable'),
       value: formatCurrency(stats.total_payable),
       icon: CreditCard,
       color: 'bg-red-500',
       href: '/dashboard/reports',
     },
     {
-      title: 'Rate List Items',
-      value: '0',
+      title: t('rateListItems'),
+      value: '5',
       icon: Package,
       color: 'bg-purple-500',
       href: '/dashboard/rate-list',
@@ -143,20 +145,20 @@ export default function DashboardPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500">Overview of your business</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('dashboard')}</h1>
+          <p className="text-gray-500">{t('overviewBusiness')}</p>
         </div>
         <div className="flex gap-2">
           <Button asChild variant="outline">
             <Link href="/dashboard/customers/new">
               <Plus className="mr-2 h-4 w-4" />
-              Add Customer
+              {t('addCustomer')}
             </Link>
           </Button>
           <Button asChild>
             <Link href="/dashboard/ledger/new">
               <Plus className="mr-2 h-4 w-4" />
-              Add Transaction
+              {t('addTransaction')}
             </Link>
           </Button>
         </div>
@@ -180,7 +182,7 @@ export default function DashboardPage() {
                 size="sm"
                 className="mt-2 text-xs h-auto px-2 text-gray-500 hover:text-gray-700"
               >
-                <Link href={stat.href}>View details</Link>
+                <Link href={stat.href}>{t('viewDetails')}</Link>
               </Button>
             </CardContent>
           </Card>
@@ -191,7 +193,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">Today's Credit</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">{t('todayCredit')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
@@ -202,7 +204,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">Today's Payments</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">{t('todayPayments')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
@@ -213,7 +215,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">This Month Sales</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">{t('thisMonthSales')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-purple-600">
@@ -224,7 +226,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">This Month Payments</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-500">{t('thisMonthPayments')}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">
@@ -240,9 +242,9 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Customers with Outstanding</CardTitle>
+              <CardTitle>{t('outstandingCustomers')}</CardTitle>
               <Button asChild variant="ghost" size="sm">
-                <Link href="/dashboard/reports/outstanding">View All</Link>
+                <Link href="/dashboard/reports">{t('viewAll')}</Link>
               </Button>
             </div>
           </CardHeader>
@@ -250,7 +252,7 @@ export default function DashboardPage() {
             {stats.outstanding_customers.length === 0 ? (
               <div className="text-center py-8">
                 <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">No outstanding balances</p>
+                <p className="text-gray-500">{t('noOutstanding')}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -268,7 +270,7 @@ export default function DashboardPage() {
                         {formatCurrency(customer.balance)}
                       </p>
                       <p className="text-xs text-gray-500">
-                        Last: {format(new Date(customer.last_transaction_date), 'dd MMM')}
+                        {format(new Date(customer.last_transaction_date), 'dd MMM')}
                       </p>
                     </div>
                   </div>
@@ -282,9 +284,9 @@ export default function DashboardPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Recent Transactions</CardTitle>
+              <CardTitle>{t('recentTransactions')}</CardTitle>
               <Button asChild variant="ghost" size="sm">
-                <Link href="/dashboard/ledger">View All</Link>
+                <Link href="/dashboard/ledger">{t('viewAll')}</Link>
               </Button>
             </div>
           </CardHeader>
@@ -292,7 +294,7 @@ export default function DashboardPage() {
             {stats.recent_transactions.length === 0 ? (
               <div className="text-center py-8">
                 <CreditCard className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-gray-500">No recent transactions</p>
+                <p className="text-gray-500">{t('noRecentTxn')}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -302,7 +304,7 @@ export default function DashboardPage() {
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">{txn.description || 'Transaction'}</p>
+                      <p className="font-medium text-gray-900 truncate">{txn.description || (language === 'hi' ? 'लेन-देन' : 'Transaction')}</p>
                       <p className="text-sm text-gray-500">{txn.customer_name}</p>
                     </div>
                     <div className="text-right ml-4">

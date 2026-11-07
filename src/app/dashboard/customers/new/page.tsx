@@ -15,6 +15,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
+import { useTranslation } from '@/lib/i18n';
 
 const customerSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255),
@@ -48,6 +50,7 @@ const states = [
 
 export default function NewCustomerPage() {
   const router = useRouter();
+  const { t, language } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -92,9 +95,20 @@ export default function NewCustomerPage() {
     setIsLoading(true);
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      try {
+        const supabase = createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+      } catch (e) {
+        // Continue without auth header
+      }
+
       const response = await fetch('/api/customers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...data,
           mobile_number: data.mobile_number || null,
@@ -150,8 +164,10 @@ export default function NewCustomerPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Add Customer</h1>
-          <p className="text-gray-500">Enter customer details</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('newCustomer')}</h1>
+          <p className="text-gray-500">
+            {language === 'hi' ? 'ग्राहक का विवरण भरें' : 'Enter customer details'}
+          </p>
         </div>
       </div>
 
@@ -171,19 +187,21 @@ export default function NewCustomerPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Customer Information</CardTitle>
-          <CardDescription>Basic details and contact information</CardDescription>
+          <CardTitle>{language === 'hi' ? 'ग्राहक जानकारी' : 'Customer Information'}</CardTitle>
+          <CardDescription>
+            {language === 'hi' ? 'बुनियादी विवरण एवं संपर्क जानकारी' : 'Basic details and contact information'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
             {/* Name - Required */}
             <div className="space-y-2">
               <Label htmlFor="name" className="flex items-center gap-1">
-                Name <span className="text-red-500">*</span>
+                {t('fullName')}
               </Label>
               <Input
                 id="name"
-                placeholder="Customer name"
+                placeholder={language === 'hi' ? 'ग्राहक का नाम' : 'Customer name'}
                 className={errors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('name')}
                 disabled={isLoading}
@@ -422,16 +440,16 @@ export default function NewCustomerPage() {
             {/* Submit Buttons */}
             <CardFooter className="flex flex-col sm:flex-row gap-4 border-t pt-6">
               <Button type="button" variant="outline" asChild>
-                <Link href="/dashboard/customers">Cancel</Link>
+                <Link href="/dashboard/customers">{t('cancel')}</Link>
               </Button>
-              <Button type="submit" className="ml-auto" disabled={isLoading}>
+              <Button type="submit" className="ml-auto bg-blue-600 hover:bg-blue-700" disabled={isLoading}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
+                    {language === 'hi' ? 'बनाया जा रहा है...' : 'Creating...'}
                   </>
                 ) : (
-                  'Create Customer'
+                  t('saveCustomer')
                 )}
               </Button>
             </CardFooter>

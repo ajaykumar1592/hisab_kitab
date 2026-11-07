@@ -1,38 +1,14 @@
-import { createServerClient } from '@/lib/supabase/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { customerUpdateSchema } from '@/lib/validation/schemas';
+import { getAuthContext } from '@/lib/auth/server';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createServerClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
-
+    const { supabase, businessId } = await getAuthContext(request);
     const { id } = await params;
-
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
 
     const { data: customer, error } = await supabase
       .from('customers')
@@ -50,8 +26,8 @@ export async function GET(
         )
       `)
       .eq('id', id)
-      .eq('business_id', membership.business_id)
-      .single();
+      .eq('business_id', businessId)
+      .maybeSingle();
 
     if (error || !customer) {
       return NextResponse.json(
@@ -114,17 +90,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createServerClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
-
+    const { supabase, businessId } = await getAuthContext(request);
     const { id } = await params;
     const body = await request.json();
 
@@ -137,27 +103,13 @@ export async function PUT(
       );
     }
 
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
-
     // Check if customer exists and belongs to business
     const { data: existing } = await supabase
       .from('customers')
       .select('id, mobile_number')
       .eq('id', id)
-      .eq('business_id', membership.business_id)
-      .single();
+      .eq('business_id', businessId)
+      .maybeSingle();
 
     if (!existing) {
       return NextResponse.json(
@@ -171,9 +123,9 @@ export async function PUT(
       const { data: duplicate } = await supabase
         .from('customers')
         .select('id')
-        .eq('business_id', membership.business_id)
+        .eq('business_id', businessId)
         .eq('mobile_number', body.mobile_number)
-        .single();
+        .maybeSingle();
 
       if (duplicate) {
         return NextResponse.json(
@@ -201,7 +153,7 @@ export async function PUT(
         notes: body.notes || null,
       })
       .eq('id', id)
-      .eq('business_id', membership.business_id)
+      .eq('business_id', businessId)
       .select()
       .single();
 
@@ -228,39 +180,15 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = createServerClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
-
+    const { supabase, businessId } = await getAuthContext(request);
     const { id } = await params;
-
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
 
     // Soft delete - archive customer
     const { error } = await supabase
       .from('customers')
       .update({ status: 'archived' })
       .eq('id', id)
-      .eq('business_id', membership.business_id);
+      .eq('business_id', businessId);
 
     if (error) {
       console.error('Customer archive error:', error);
