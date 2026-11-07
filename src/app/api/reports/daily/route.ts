@@ -1,32 +1,9 @@
-import { createServerClient } from '@/lib/supabase/client';
+import { getAuthContext } from '@/lib/auth/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
-
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
+    const { supabase, businessId } = await getAuthContext(request);
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
@@ -42,7 +19,7 @@ export async function GET(request: NextRequest) {
     const { data: transactions, error } = await supabase
       .from('transactions')
       .select('transaction_date, transaction_type, amount')
-      .eq('business_id', membership.business_id)
+      .eq('business_id', businessId)
       .is('deleted_at', null)
       .gte('transaction_date', start.toISOString().split('T')[0])
       .lte('transaction_date', end.toISOString().split('T')[0])
@@ -120,7 +97,102 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Calculate stats for dashboard
+    const totalReceivable = (transactions || [])
+      .filter(t => t.transaction_type === 'credit' || t.transaction_type === 'opening')
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    const totalPayable = (transactions || [])
+      .filter(t => t.transaction_type === 'debit' || t.transaction_type === 'adjustment' || t.transaction_type === 'purchase_return')
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    const todayCredit = (transactions || [])
+      .filter(t => t.transaction_type === 'credit' || t.transaction_type === 'opening')
+      .filter(t => t.transaction_date === new Date().toISOString().split('T')[0])
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    const todayDebit = (transactions || [])
+      .filter(t => t.transaction_type === 'debit')
+      .filter(t => t.transaction_date === new Date().toISOString().split('T')[0])
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    const todayPayments = (transactions || [])
+      .filter(t => t.transaction_type === 'payment')
+      .filter(t => t.transaction_date === new Date().toISOString().split('T')[0])
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
+    // Get customers count
+    const { data: customers } = await supabase
+      .from('customers')
+      .select('id', { count: 'exact' })
+      .eq('business_id', businessId)
+      .is('deleted_at', null);
+
+    // Get outstanding customers
+    const { data: outstandingCustomers } = await supabase
+      .from('customers')
+      .select('id, name, mobile_number')
+      .eq('business_id', businessId)
+      .is('deleted_at', null);
+
+    // Calculate balances for outstanding
+    const customerBalances: any[] = [];
+    if (outstandingCustomers) {
+      for (const customer of outstandingCustomers) {
+        const { data: custTxns } = await supabase
+          .from('transactions')
+          .select('transaction_type, amount')
+          .eq('business_id', businessId)
+          .eq('customer_id', customer.id)
+          .is('deleted_at', null);
+
+        let balance = 0;
+        if (custTxns) {
+          custTxns.forEach((t: any) => {
+            if (t.transaction_type === 'credit' || t.transaction_type === 'opening') {
+              balance += Number(t.amount);
+            } else if (t.transaction_type === 'payment') {
+              balance -= Number(t.amount);
+            } else if (t.transaction_type === 'debit') {
+              balance -= Number(t.amount);
+            }
+          });
+        }
+
+        if (balance > 0) {
+          customerBalances.push({
+            id: customer.id,
+            name: customer.name,
+            mobile_number: customer.mobile_number,
+            balance,
+            last_transaction_date: new Date().toISOString().split('T')[0],
+          });
+        }
+      }
+    }
+
+    const stats = {
+      total_customers: customers?.length || 0,
+      total_receivable: totalReceivable,
+      total_payable: totalPayable,
+      today_credit: todayCredit,
+      today_debit: todayDebit,
+      today_payments: todayPayments,
+      this_month_sales: totalReceivable,
+      this_month_payments: 0,
+      outstanding_customers: customerBalances.slice(0, 5),
+      recent_transactions: dailyData.slice(0, 5).map((d, i) => ({
+        id: `recent-${i}`,
+        transaction_date: d.date,
+        transaction_type: 'credit',
+        amount: d.total_sales,
+        description: `Sales for ${d.date}`,
+        customer_name: 'Customer',
+      })),
+    };
+
     return NextResponse.json({
+      stats,
       data: dailyData,
       date_range: { start: start.toISOString().split('T')[0], end: end.toISOString().split('T')[0] },
       generated_at: new Date().toISOString(),

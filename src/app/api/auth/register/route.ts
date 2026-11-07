@@ -21,14 +21,13 @@ export async function POST(request: NextRequest) {
 
     const supabase = createServerClient();
 
-    // Create auth user
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    // Create auth user using Supabase Admin API
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
-      options: {
-        data: {
-          full_name,
-        },
+      email_confirm: true,
+      user_metadata: {
+        full_name,
       },
     });
 
@@ -46,25 +45,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const userId = authData.user.id;
+
     // Create profile
     const { error: profileError } = await supabase
       .from('profiles')
       .insert({
-        id: authData.user.id,
+        id: userId,
         email,
         full_name,
       });
 
     if (profileError) {
       console.error('Profile creation error:', profileError);
-      // Don't fail registration if profile creation fails
+      return NextResponse.json(
+        { error: { message: `Profile creation failed: ${profileError.message}` } },
+        { status: 500 }
+      );
     }
 
     // Create business
     const { data: business, error: businessError } = await supabase
       .from('businesses')
       .insert({
-        owner_id: authData.user.id,
+        owner_id: userId,
         name: business_name,
       })
       .select()
@@ -73,7 +77,7 @@ export async function POST(request: NextRequest) {
     if (businessError) {
       console.error('Business creation error:', businessError);
       return NextResponse.json(
-        { error: { message: 'Failed to create business' } },
+        { error: { message: `Failed to create business: ${businessError.message}` } },
         { status: 500 }
       );
     }
@@ -83,7 +87,7 @@ export async function POST(request: NextRequest) {
       .from('business_members')
       .insert({
         business_id: business.id,
-        user_id: authData.user.id,
+        user_id: userId,
         role: 'owner',
       });
 
@@ -105,7 +109,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       user: authData.user,
       business,
-      session: authData.session,
     });
   } catch (error) {
     console.error('Registration error:', error);

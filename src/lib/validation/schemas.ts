@@ -3,19 +3,19 @@ import { z } from 'zod';
 // Customer schemas
 export const customerSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255),
-  mobile_number: z.string().regex(/^[0-9]{10}$/, 'Invalid mobile number').optional(),
-  alternate_mobile_number: z.string().regex(/^[0-9]{10}$/, 'Invalid mobile number').optional(),
-  whatsapp_number: z.string().regex(/^[0-9]{10,15}$/, 'Invalid WhatsApp number').optional(),
-  business_type: z.string().max(100).optional(),
-  address: z.string().max(500).optional(),
-  city: z.string().max(100).optional(),
-  state: z.string().max(100).optional(),
-  pin_code: z.string().regex(/^[0-9]{6}$/, 'Invalid PIN code').optional(),
-  email: z.string().email('Invalid email').optional(),
-  gstin: z.string().max(15).optional(),
+  mobile_number: z.string().regex(/^[0-9]{10}$/, 'Invalid mobile number').optional().nullable(),
+  alternate_mobile_number: z.string().regex(/^[0-9]{10}$/, 'Invalid mobile number').optional().nullable(),
+  whatsapp_number: z.string().regex(/^[0-9]{10,15}$/, 'Invalid WhatsApp number').optional().nullable(),
+  business_type: z.string().max(100).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  city: z.string().max(100).optional().nullable(),
+  state: z.string().max(100).optional().nullable(),
+  pin_code: z.string().regex(/^[0-9]{6}$/, 'Invalid PIN code').optional().nullable(),
+  email: z.string().email('Invalid email').optional().nullable(),
+  gstin: z.string().max(15).optional().nullable(),
   opening_balance: z.number().min(0, 'Opening balance must be positive').default(0),
   opening_balance_type: z.enum(['receivable', 'payable']).default('receivable'),
-  notes: z.string().max(1000).optional(),
+  notes: z.string().max(1000).optional().nullable(),
   status: z.enum(['active', 'archived']).default('active'),
 });
 
@@ -37,17 +37,17 @@ export const transactionUpdateSchema = transactionSchema.partial();
 // Product schemas
 export const productSchema = z.object({
   item_name: z.string().min(1, 'Item name is required').max(255),
-  item_code: z.string().max(50).optional(),
-  category_id: z.string().uuid('Invalid category ID').optional(),
-  description: z.string().max(1000).optional(),
+  item_code: z.string().max(50).optional().nullable().or(z.literal('')),
+  category_id: z.string().min(1, 'Category ID is required'),
+  description: z.string().max(1000).optional().nullable().or(z.literal('')),
   unit: z.string().min(1, 'Unit is required').max(50),
-  quantity: z.number().positive('Quantity must be positive').default(1),
-  rate: z.number().positive('Rate must be positive'),
-  gst_percentage: z.number().min(0).max(100).optional(),
-  hsn_code: z.string().max(20).optional(),
-  minimum_order_quantity: z.number().positive().optional(),
-  effective_date: z.string().optional(),
-  expiry_date: z.string().optional(),
+  quantity: z.number().min(0, 'Quantity must be positive').default(1),
+  rate: z.number().min(0, 'Rate must be positive'),
+  gst_percentage: z.number().min(0).max(100).optional().nullable().default(0),
+  hsn_code: z.string().max(20).optional().nullable().or(z.literal('')),
+  minimum_order_quantity: z.number().min(0).optional().nullable(),
+  effective_date: z.string().optional().nullable().or(z.literal('')),
+  expiry_date: z.string().optional().nullable().or(z.literal('')),
   status: z.enum(['active', 'inactive']).default('active'),
 });
 
@@ -62,7 +62,6 @@ export const productCreateSchema = productSchema.refine(
 export const productCategorySchema = z.object({
   name: z.string().min(1, 'Category name is required').max(100),
   description: z.string().max(500).optional(),
-  parent_category_id: z.string().uuid().optional(),
 });
 
 export const productCategoryUpdateSchema = productCategorySchema.partial();

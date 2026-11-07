@@ -9,7 +9,12 @@ export const createClient = () => {
 };
 
 export const createServerClient = () => {
-  return createSupabaseClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  return createSupabaseClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 };
 
 export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);

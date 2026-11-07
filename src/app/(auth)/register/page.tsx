@@ -33,10 +33,19 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
+    setFocus,
     formState: { errors },
   } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
   });
+
+  const onInvalid = () => {
+    setError('Please check all required fields and fix validation errors before submitting.');
+    const errorKeys = Object.keys(errors);
+    if (errorKeys.length > 0) {
+      setFocus(errorKeys[0] as any);
+    }
+  };
 
   const onSubmit = async (data: RegisterForm) => {
     setError(null);
@@ -89,13 +98,14 @@ export default function RegisterPage() {
           <CardDescription>Create your business account</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="full_name">Full Name</Label>
+              <Label htmlFor="full_name">Full Name *</Label>
               <Input
                 id="full_name"
                 type="text"
                 placeholder="John Doe"
+                className={errors.full_name ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('full_name')}
                 disabled={isLoading}
               />
@@ -105,11 +115,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="business_name">Business Name</Label>
+              <Label htmlFor="business_name">Business Name *</Label>
               <Input
                 id="business_name"
                 type="text"
                 placeholder="My Shop"
+                className={errors.business_name ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('business_name')}
                 disabled={isLoading}
               />
@@ -119,11 +130,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email *</Label>
               <Input
                 id="email"
                 type="email"
                 placeholder="you@example.com"
+                className={errors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('email')}
                 disabled={isLoading}
               />
@@ -133,11 +145,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Password *</Label>
               <Input
                 id="password"
                 type="password"
                 placeholder="••••••••"
+                className={errors.password ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('password')}
                 disabled={isLoading}
               />
@@ -147,11 +160,12 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Label htmlFor="confirmPassword">Confirm Password *</Label>
               <Input
                 id="confirmPassword"
                 type="password"
                 placeholder="••••••••"
+                className={errors.confirmPassword ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('confirmPassword')}
                 disabled={isLoading}
               />

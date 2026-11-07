@@ -1,19 +1,10 @@
-import { createServerClient } from '@/lib/supabase/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { customerSchema } from '@/lib/validation/schemas';
+import { getAuthContext } from '@/lib/auth/server';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
+    const { supabase, businessId } = await getAuthContext(request);
 
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
@@ -22,20 +13,6 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'active';
     const sort = searchParams.get('sort') || 'created_at';
     const order = searchParams.get('order') || 'desc';
-
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
 
     let query = supabase
       .from('customers')
@@ -48,7 +25,7 @@ export async function GET(request: NextRequest) {
           amount
         )
       `, { count: 'exact' })
-      .eq('business_id', membership.business_id);
+      .eq('business_id', businessId);
 
     if (status !== 'all') {
       query = query.eq('status', status);
@@ -119,16 +96,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
+    const { supabase, user, businessId } = await getAuthContext(request);
 
     const body = await request.json();
 
@@ -141,28 +109,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
-
-    // Check for duplicate mobile number
+    // Check for duplicate mobile number within business
     if (body.mobile_number) {
       const { data: existing } = await supabase
         .from('customers')
         .select('id')
-        .eq('business_id', membership.business_id)
+        .eq('business_id', businessId)
         .eq('mobile_number', body.mobile_number)
-        .single();
+        .is('deleted_at', null)
+        .maybeSingle();
 
       if (existing) {
         return NextResponse.json(
@@ -177,7 +132,7 @@ export async function POST(request: NextRequest) {
       .from('customers')
       .insert({
         ...validation.data,
-        business_id: membership.business_id,
+        business_id: businessId,
         mobile_number: body.mobile_number || null,
         alternate_mobile_number: body.alternate_mobile_number || null,
         whatsapp_number: body.whatsapp_number || null,
@@ -196,7 +151,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Customer creation error:', error);
       return NextResponse.json(
-        { error: { message: 'Failed to create customer' } },
+        { error: { message: 'Failed to create customer', details: error.message } },
         { status: 500 }
       );
     }
@@ -206,12 +161,12 @@ export async function POST(request: NextRequest) {
       await supabase
         .from('transactions')
         .insert({
-          business_id: membership.business_id,
+          business_id: businessId,
           customer_id: customer.id,
           transaction_type: 'opening',
           amount: validation.data.opening_balance,
           description: 'Opening balance',
-          created_by: user.id,
+          created_by: user?.id || null,
         });
     }
 

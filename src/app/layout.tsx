@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import PWAInstallPrompt from "@/components/pwa-install-prompt";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -47,17 +46,12 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <head />
-      <body className="min-h-full flex flex-col bg-gray-50">
-        <PWAInitializer />
-        <PWAInstallPrompt />
+      <body className="min-h-full flex flex-col bg-gray-50" suppressHydrationWarning>
+        <PWARegistrationScript />
         {children}
       </body>
     </html>
   );
-}
-
-function PWAInitializer() {
-  return <PWARegistrationScript />;
 }
 
 function PWARegistrationScript() {

@@ -1,37 +1,13 @@
-import { createServerClient } from '@/lib/supabase/client';
 import { NextRequest, NextResponse } from 'next/server';
 import { productCreateSchema, productQuerySchema } from '@/lib/validation/schemas';
+import { getAuthContext } from '@/lib/auth/server';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient();
+    const { supabase, businessId } = await getAuthContext(request);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
-
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
-
-    // Parse query parameters
     const { searchParams } = new URL(request.url);
-    const query = productQuerySchema.parse(Object.fromEntries(searchParams));
+    const queryData = productQuerySchema.parse(Object.fromEntries(searchParams));
 
     let dbQuery = supabase
       .from('products')
@@ -41,31 +17,27 @@ export async function GET(request: NextRequest) {
           id,
           name
         )
-      `)
-      .eq('business_id', membership.business_id)
-      .is('deleted_at', null);
+      `, { count: 'exact' })
+      .eq('business_id', businessId);
 
-    // Apply filters
-    if (query.search) {
-      dbQuery = dbQuery.or(`item_name.ilike.%${query.search}%,item_code.ilike.%${query.search}%,description.ilike.%${query.search}%`);
+    if (queryData.search) {
+      dbQuery = dbQuery.or(`item_name.ilike.%${queryData.search}%,item_code.ilike.%${queryData.search}%,description.ilike.%${queryData.search}%`);
     }
 
-    if (query.category_id) {
-      dbQuery = dbQuery.eq('category_id', query.category_id);
+    if (queryData.category_id) {
+      dbQuery = dbQuery.eq('category_id', queryData.category_id);
     }
 
-    if (query.status) {
-      dbQuery = dbQuery.eq('status', query.status);
+    if (queryData.status) {
+      dbQuery = dbQuery.eq('status', queryData.status);
     }
 
-    // Apply sorting
-    const sortField = query.sort_by || 'item_name';
-    const sortOrder = query.sort_order || 'asc';
+    const sortField = queryData.sort_by || 'item_name';
+    const sortOrder = queryData.sort_order || 'asc';
     dbQuery = dbQuery.order(sortField, { ascending: sortOrder === 'asc' });
 
-    // Apply pagination
-    const limit = query.limit || 50;
-    const offset = query.offset || 0;
+    const limit = queryData.limit || 50;
+    const offset = queryData.offset || 0;
     dbQuery = dbQuery.range(offset, offset + limit - 1);
 
     const { data: products, error, count } = await dbQuery;
@@ -78,7 +50,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Transform data to include category name
     const transformedProducts = (products || []).map(p => ({
       ...p,
       category: p.product_categories?.name || 'Uncategorized',
@@ -101,50 +72,28 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
-
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
+    const { supabase, user, businessId } = await getAuthContext(request);
 
     const body = await request.json();
+    console.log('Product POST body:', body);
+    console.log('businessId:', businessId);
+    console.log('user:', user?.id);
 
-    // Validate input
     const validation = productCreateSchema.safeParse(body);
     if (!validation.success) {
+      console.log('Validation failed:', validation.error.flatten());
       return NextResponse.json(
         { error: { message: 'Validation failed', details: validation.error.flatten() } },
         { status: 400 }
       );
     }
 
-    // Check for duplicate item_code within business
     if (body.item_code) {
       const { data: existing } = await supabase
         .from('products')
         .select('id')
-        .eq('business_id', membership.business_id)
+        .eq('business_id', businessId)
         .eq('item_code', body.item_code)
-        .is('deleted_at', null)
         .single();
 
       if (existing) {
@@ -155,13 +104,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Verify category belongs to business
     if (body.category_id) {
       const { data: category } = await supabase
         .from('product_categories')
         .select('id')
         .eq('id', body.category_id)
-        .eq('business_id', membership.business_id)
+        .eq('business_id', businessId)
         .single();
 
       if (!category) {
@@ -172,19 +120,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Calculate final rate
     const finalRate = body.rate + (body.rate * body.gst_percentage / 100);
 
-    // Create product
     const { data: product, error } = await supabase
       .from('products')
       .insert({
         ...validation.data,
-        business_id: membership.business_id,
+        business_id: businessId,
         final_rate: finalRate,
-        reference_number: body.reference_number || null,
-        description: body.description || null,
-        hsn_code: body.hsn_code || null,
       })
       .select(`
         *,
@@ -198,7 +141,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Product creation error:', error);
       return NextResponse.json(
-        { error: { message: 'Failed to create product' } },
+        { error: { message: 'Failed to create product', details: error.message } },
         { status: 500 }
       );
     }

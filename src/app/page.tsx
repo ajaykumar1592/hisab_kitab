@@ -15,8 +15,11 @@ export default function HomePage() {
             rate list management, and professional PDF generation for Indian businesses.
           </p>
           <div className="flex gap-4 justify-center">
-            <Link href="/login" className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition">
-              Get Started <ArrowRight className="inline ml-2" size={20} />
+            <Link href="/dashboard" className="bg-blue-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-blue-700 transition flex items-center">
+              Go to Dashboard <ArrowRight className="inline ml-2" size={20} />
+            </Link>
+            <Link href="/login" className="border border-gray-300 text-gray-700 bg-white px-8 py-3 rounded-lg font-semibold hover:bg-gray-50 transition">
+              Sign In
             </Link>
           </div>
         </div>
