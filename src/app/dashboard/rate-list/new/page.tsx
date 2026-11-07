@@ -112,13 +112,6 @@ export default function NewProductPage() {
     } catch (err) {
       console.error('Failed to fetch categories:', err);
     } finally {
-      setCategories(prev => {
-        const list = prev.length > 0 ? prev : mockCategories;
-        if (!watch('category_id') && list.length > 0) {
-          setValue('category_id', list[0].id);
-        }
-        return list;
-      });
       setLoadingCategories(false);
     }
   };

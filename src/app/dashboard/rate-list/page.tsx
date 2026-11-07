@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Search, Filter, Download, Edit, Trash2, Eye, Package, MoreVertical, Loader2 } from 'lucide-react';
+import { Plus, Search, Filter, Download, Edit, Trash2, Eye, Package, MoreVertical, Loader2, Layers } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
@@ -41,100 +41,32 @@ export default function RateListPage() {
   const [sortBy, setSortBy] = useState('item_name');
   const [sortOrder, setSortOrder] = useState('asc');
 
-  // Mock data for UI demonstration
-  const mockProducts: Product[] = [
-    {
-      id: '1',
-      item_name: 'Cement (OPC 53 Grade)',
-      item_code: 'CEM-001',
-      category: 'Building Materials',
-      unit: 'Bag',
-      quantity: 1,
-      rate: 350,
-      gst_percentage: 28,
-      final_rate: 448,
-      status: 'active',
-      created_at: '2024-01-10',
-    },
-    {
-      id: '2',
-      item_name: 'TMT Steel Bar 12mm',
-      item_code: 'STL-001',
-      category: 'Construction Materials',
-      unit: 'Kg',
-      quantity: 1,
-      rate: 65,
-      gst_percentage: 18,
-      final_rate: 76.7,
-      status: 'active',
-      created_at: '2024-01-10',
-    },
-    {
-      id: '3',
-      item_name: 'River Sand',
-      item_code: 'SND-001',
-      category: 'Building Materials',
-      unit: 'Cubic Feet',
-      quantity: 1,
-      rate: 45,
-      gst_percentage: 5,
-      final_rate: 47.25,
-      status: 'active',
-      created_at: '2024-01-09',
-    },
-    {
-      id: '4',
-      item_name: 'Red Bricks',
-      item_code: 'BRK-001',
-      category: 'Building Materials',
-      unit: 'Piece',
-      quantity: 1000,
-      rate: 6,
-      gst_percentage: 5,
-      final_rate: 6.3,
-      status: 'active',
-      created_at: '2024-01-08',
-    },
-    {
-      id: '5',
-      item_name: 'White Cement',
-      item_code: 'CEM-002',
-      category: 'Building Materials',
-      unit: 'Bag',
-      quantity: 1,
-      rate: 580,
-      gst_percentage: 28,
-      final_rate: 742.4,
-      status: 'inactive',
-      created_at: '2024-01-07',
-    },
-    {
-      id: '6',
-      item_name: 'PVC Pipe 1 inch',
-      item_code: 'PVC-001',
-      category: 'Plumbing',
-      unit: 'Meter',
-      quantity: 1,
-      rate: 85,
-      gst_percentage: 18,
-      final_rate: 100.3,
-      status: 'active',
-      created_at: '2024-01-06',
-    },
-  ];
-
-  const mockCategories: Category[] = [
-    { id: '1', name: 'Building Materials' },
-    { id: '2', name: 'Construction Materials' },
-    { id: '3', name: 'Plumbing' },
-    { id: '4', name: 'Electrical' },
-    { id: '5', name: 'Paint & Hardware' },
-  ];
-
   useEffect(() => {
-    setProducts(mockProducts);
-    setCategories(mockCategories);
-  }, []);
+    fetchData();
+  }, [categoryFilter, statusFilter, search]);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [prodRes, catRes] = await Promise.all([
+        fetch(`/api/products?status=${statusFilter}&category_id=${categoryFilter === 'all' ? '' : categoryFilter}&search=${search}`),
+        fetch('/api/categories')
+      ]);
+
+      if (prodRes.ok) {
+        const prodData = await prodRes.json();
+        setProducts(prodData.products || []);
+      }
+      if (catRes.ok) {
+        const catData = await catRes.json();
+        setCategories(catData.categories || []);
+      }
+    } catch (e) {
+      console.error('Error fetching rate list data:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredProducts = products
     .filter((p) => {
@@ -202,6 +134,12 @@ export default function RateListPage() {
           <p className="text-gray-500">Manage your product catalog and prices</p>
         </div>
         <div className="flex gap-2">
+          <Button asChild variant="outline" className="hidden md:flex">
+            <Link href="/dashboard/settings/categories">
+              <Layers className="mr-2 h-4 w-4" />
+              Categories
+            </Link>
+          </Button>
           <Button asChild variant="outline">
             <Link href="/dashboard/rate-list/import">
               <Download className="mr-2 h-4 w-4" />
