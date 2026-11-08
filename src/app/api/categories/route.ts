@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('Categories fetch error:', error);
       return NextResponse.json(
-        { error: { message: 'Failed to fetch categories' } },
+        { error: { message: 'Failed to fetch categories', details: error.message, hint: error.hint, code: error.code } },
         { status: 500 }
       );
     }
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Categories GET error:', error);
     return NextResponse.json(
-      { error: { message: 'Internal server error' } },
+      { error: { message: 'Internal server error', details: error instanceof Error ? error.message : String(error) } },
       { status: 500 }
     );
   }

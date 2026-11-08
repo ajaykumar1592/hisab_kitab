@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error('Products fetch error:', error);
       return NextResponse.json(
-        { error: { message: 'Failed to fetch products' } },
+        { error: { message: 'Failed to fetch products', details: error.message, hint: error.hint, code: error.code } },
         { status: 500 }
       );
     }
@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Products GET error:', error);
     return NextResponse.json(
-      { error: { message: 'Internal server error' } },
+      { error: { message: 'Internal server error', details: error instanceof Error ? error.message : String(error) } },
       { status: 500 }
     );
   }

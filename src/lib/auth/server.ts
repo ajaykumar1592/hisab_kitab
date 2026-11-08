@@ -44,7 +44,21 @@ export async function getAuthContext(request: NextRequest): Promise<AuthContext>
             .eq('user_id', user.id)
             .maybeSingle();
 
-          const businessId = membership?.business_id || fallbackBusinessId;
+          let businessId = membership?.business_id;
+
+          if (!businessId) {
+            const { data: ownedBiz } = await supabase
+              .from('businesses')
+              .select('id')
+              .eq('owner_id', user.id)
+              .maybeSingle();
+
+            businessId = ownedBiz?.id;
+          }
+
+          if (!businessId) {
+            businessId = fallbackBusinessId;
+          }
 
           return {
             supabase,
