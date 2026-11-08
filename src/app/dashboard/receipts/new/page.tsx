@@ -36,15 +36,7 @@ interface Customer {
   balance: number;
 }
 
-const mockCustomers: Customer[] = [
-  { id: '1', name: 'Rajesh Kumar', mobile_number: '9876543210', balance: 15000 },
-  { id: '2', name: 'Priya Sharma', mobile_number: '9876543211', balance: -5000 },
-  { id: '3', name: 'Amit Patel', mobile_number: '9876543212', balance: 25000 },
-  { id: '4', name: 'Vikram Reddy', mobile_number: '9876543213', balance: 8000 },
-  { id: '5', name: 'Sunita Devi', mobile_number: '9876543214', balance: -12000 },
-];
-
-export default function NewReceiptPage() {
+export default function ReceiptPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const prefillCustomerId = searchParams.get('customer');
@@ -60,17 +52,14 @@ export default function NewReceiptPage() {
     handleSubmit,
     watch,
     setValue,
+    setFocus,
     formState: { errors },
   } = useForm<ReceiptForm>({
     resolver: zodResolver(receiptSchema),
     defaultValues: {
       receipt_date: new Date().toISOString().split('T')[0],
-      payment_method: 'cash',
-      amount: 0,
     },
   });
-
-  const amount = watch('amount');
 
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -86,11 +75,6 @@ export default function NewReceiptPage() {
     return headers;
   };
 
-  // Fetch customers on load
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
-
   const fetchCustomers = async () => {
     try {
       setLoadingCustomers(true);
@@ -98,7 +82,7 @@ export default function NewReceiptPage() {
       const response = await fetch('/api/customers?status=active&limit=100', { headers });
       if (response.ok) {
         const result = await response.json();
-        if (result.customers && result.customers.length > 0) {
+        if (result.customers) {
           setCustomers(result.customers);
           return;
         }
@@ -106,17 +90,27 @@ export default function NewReceiptPage() {
     } catch (err) {
       console.error('Failed to fetch customers:', err);
     } finally {
-      setCustomers(prev => prev.length > 0 ? prev : mockCustomers);
       setLoadingCustomers(false);
     }
   };
 
-  // Pre-fill customer if provided
+  useEffect(() => {
+    fetchCustomers();
+  }, []);
+
   useEffect(() => {
     if (prefillCustomerId) {
       setValue('customer_id', prefillCustomerId);
     }
   }, [prefillCustomerId, setValue]);
+
+  const onInvalid = () => {
+    setError('Please check all required fields and fix validation errors before submitting.');
+    const errorKeys = Object.keys(errors);
+    if (errorKeys.length > 0) {
+      setFocus(errorKeys[0] as any);
+    }
+  };
 
   const onSubmit = async (data: ReceiptForm) => {
     setError(null);
@@ -124,13 +118,32 @@ export default function NewReceiptPage() {
     setIsSubmitting(true);
 
     try {
-      // In real app, call API to create receipt
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/receipts', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          ...data,
+          amount: Number(data.amount),
+          reference_number: data.reference_number || null,
+        }),
+      });
 
-      // Generate receipt number
-      const receiptNumber = `RCP-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
+      const result = await response.json();
 
-      setSuccess(`Receipt ${receiptNumber} created successfully!`);
+      if (!response.ok) {
+        if (result.error?.details) {
+          const detailMsg = Object.entries(result.error.details)
+            .map(([field, msg]: any) => `${field}: ${msg}`)
+            .join(', ');
+          setError(`Validation failed: ${detailMsg}`);
+        } else {
+          throw new Error(result.error?.message || 'Failed to create receipt');
+        }
+        return;
+      }
+
+      setSuccess(`Receipt ${result.receipt?.receipt_number || 'created'} successfully!`);
       setTimeout(() => {
         router.push('/dashboard/receipts');
         router.refresh();
@@ -142,6 +155,8 @@ export default function NewReceiptPage() {
     }
   };
 
+  const amount = watch('amount');
+
   const getBalanceDisplay = (balance: number) => {
     return balance >= 0
       ? `${formatCurrency(balance)} Dr`
@@ -150,7 +165,6 @@ export default function NewReceiptPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Page Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href="/dashboard/receipts">
@@ -183,8 +197,7 @@ export default function NewReceiptPage() {
           <CardDescription>Enter the payment receipt information</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Customer Selection */}
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="customer_id" className="flex items-center gap-1">
                 Customer <span className="text-red-500">*</span>
@@ -199,7 +212,7 @@ export default function NewReceiptPage() {
                   value={watch('customer_id')}
                   onValueChange={(value) => setValue('customer_id', value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={errors.customer_id ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
@@ -226,12 +239,12 @@ export default function NewReceiptPage() {
               )}
             </div>
 
-            {/* Date */}
             <div className="space-y-2">
               <Label htmlFor="receipt_date">Date <span className="text-red-500">*</span></Label>
               <Input
                 id="receipt_date"
                 type="date"
+                className={errors.receipt_date ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('receipt_date')}
                 disabled={isSubmitting}
               />
@@ -240,7 +253,6 @@ export default function NewReceiptPage() {
               )}
             </div>
 
-            {/* Amount */}
             <div className="space-y-2">
               <Label htmlFor="amount" className="flex items-center gap-1">
                 Amount <span className="text-red-500">*</span>
@@ -251,6 +263,7 @@ export default function NewReceiptPage() {
                 step="0.01"
                 min="0.01"
                 placeholder="0.00"
+                className={errors.amount ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('amount', { valueAsNumber: true })}
                 disabled={isSubmitting}
               />
@@ -262,7 +275,6 @@ export default function NewReceiptPage() {
               )}
             </div>
 
-            {/* Payment Method */}
             <div className="space-y-2">
               <Label htmlFor="payment_method" className="flex items-center gap-1">
                 Payment Method <span className="text-red-500">*</span>
@@ -271,7 +283,7 @@ export default function NewReceiptPage() {
                 value={watch('payment_method')}
                 onValueChange={(value) => setValue('payment_method', value as ReceiptForm['payment_method'])}
               >
-                <SelectTrigger>
+                <SelectTrigger className={errors.payment_method ? 'border-red-500' : ''}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -287,12 +299,12 @@ export default function NewReceiptPage() {
               )}
             </div>
 
-            {/* Reference Number */}
             <div className="space-y-2">
               <Label htmlFor="reference_number">Reference Number</Label>
               <Input
                 id="reference_number"
                 placeholder="e.g., PY-2024-001, UPI Ref #"
+                className={errors.reference_number ? 'border-red-500' : ''}
                 {...register('reference_number')}
                 disabled={isSubmitting}
               />
@@ -301,13 +313,13 @@ export default function NewReceiptPage() {
               )}
             </div>
 
-            {/* Description */}
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
                 placeholder="Payment description (e.g., 'Payment for Invoice INV-001')"
                 rows={2}
+                className={errors.description ? 'border-red-500' : ''}
                 {...register('description')}
                 disabled={isSubmitting}
               />
@@ -316,8 +328,8 @@ export default function NewReceiptPage() {
               )}
             </div>
 
-            {/* Preview */}
             <Separator />
+
             <div className="bg-gray-50 rounded-lg p-4">
               <h4 className="font-medium text-gray-900 mb-3">Receipt Preview</h4>
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -340,7 +352,6 @@ export default function NewReceiptPage() {
               </div>
             </div>
 
-            {/* Submit Buttons */}
             <CardFooter className="flex flex-col sm:flex-row gap-4 border-t pt-6">
               <Button type="button" variant="outline" asChild>
                 <Link href="/dashboard/receipts">Cancel</Link>

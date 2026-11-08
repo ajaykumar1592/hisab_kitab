@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, CheckCircle2, AlertCircle, Save, Building2, Globe, CreditCard, Bell, Shield, Smartphone, FileText, Layers } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, Save, Building2, Globe, CreditCard, Bell, Shield, Smartphone, FileText, Layers, Download, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation, Language } from '@/lib/i18n';
 import { createClient } from '@/lib/supabase/client';
@@ -44,34 +44,6 @@ interface BusinessSettings {
   email_enabled: boolean;
 }
 
-const mockBusiness: Business = {
-  id: '1',
-  name: 'Hisab Kitab Demo',
-  logo_url: '',
-  mobile_number: '9876543210',
-  whatsapp_number: '9876543210',
-  email: 'demo@hisabkitab.com',
-  address: '123 Business Street',
-  city: 'Mumbai',
-  state: 'Maharashtra',
-  pin_code: '400001',
-  gstin: '27ABCDE1234F1Z5',
-  business_type: 'Retail',
-  currency: 'INR',
-  default_language: 'en',
-  financial_year_start: '2024-04-01',
-};
-
-const mockSettings: BusinessSettings = {
-  default_currency: 'INR',
-  default_language: 'en',
-  financial_year_start: '2024-04-01',
-  receipt_number_format: 'RCP-{YYYY}-{SEQ}',
-  invoice_number_format: 'INV-{YYYY}-{SEQ}',
-  whatsapp_enabled: false,
-  email_enabled: false,
-};
-
 const currencies = [
   { code: 'INR', name: 'Indian Rupee (₹)' },
   { code: 'USD', name: 'US Dollar ($)' },
@@ -102,7 +74,6 @@ const states = [
   'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
 ];
 
-// Helper function to preview a format template
 function previewFormat(format: string, seq = 1): string {
   const now = new Date();
   const year = now.getFullYear();
@@ -124,10 +95,15 @@ export default function SettingsPage() {
   const router = useRouter();
   const { t, language, setLanguage } = useTranslation();
   const [activeTab, setActiveTab] = useState<'general' | 'whatsapp' | 'notifications' | 'advanced'>('general');
-  const [business, setBusiness] = useState<Business>(mockBusiness);
+  const [business, setBusiness] = useState<Business | null>(null);
   const [settings, setSettings] = useState<BusinessSettings>({
-    ...mockSettings,
-    default_language: language,
+    default_currency: 'INR',
+    default_language: 'en',
+    financial_year_start: new Date().toISOString().slice(0, 7) + '-01',
+    receipt_number_format: 'RCP-{YYYY}-{SEQ}',
+    invoice_number_format: 'INV-{YYYY}-{SEQ}',
+    whatsapp_enabled: false,
+    email_enabled: false,
   });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -148,7 +124,6 @@ export default function SettingsPage() {
     return headers;
   };
 
-  // Load real settings from DB on mount
   useEffect(() => {
     const loadSettings = async () => {
       setLoading(true);
@@ -169,7 +144,7 @@ export default function SettingsPage() {
           }
         }
       } catch (err) {
-        console.warn('Failed to load settings, using defaults', err);
+        console.warn('Failed to load settings', err);
       } finally {
         setLoading(false);
       }
@@ -177,15 +152,17 @@ export default function SettingsPage() {
     loadSettings();
   }, []);
 
-  const handleBusinessChange = (field: string, value: any) => {
-    setBusiness(prev => ({ ...prev, [field]: value }));
+  const handleBusinessChange = (field: keyof Business, value: any) => {
+    if (!business) return;
+    setBusiness(prev => prev ? { ...prev, [field]: value } : prev);
   };
 
-  const handleSettingsChange = (field: string, value: any) => {
+  const handleSettingsChange = (field: keyof BusinessSettings, value: any) => {
     setSettings(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSaveGeneral = async () => {
+    if (!business) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -198,7 +175,7 @@ export default function SettingsPage() {
         body: JSON.stringify(business),
       });
       if (!response.ok) throw new Error('Failed to save business info');
-      setSuccess('Business information saved successfully!');
+      setSuccess(t('saveSettings', 'Settings saved successfully!'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
@@ -219,7 +196,7 @@ export default function SettingsPage() {
         body: JSON.stringify(settings),
       });
       if (!response.ok) throw new Error('Failed to save settings');
-      setSuccess('Settings saved successfully!');
+      setSuccess(t('saveSettings', 'Settings saved successfully!'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
@@ -227,9 +204,121 @@ export default function SettingsPage() {
     }
   };
 
+  const handleDeleteAllData = async () => {
+    const confirmed = window.confirm(
+      '⚠️ DANGER: This will PERMANENTLY DELETE all your business data including:\n' +
+      '• All customers and their transaction history\n' +
+      '• All products and categories\n' +
+      '• All transactions, receipts, and ledger entries\n' +
+      '• All business settings and configurations\n\n' +
+      'This action CANNOT be undone. Are you absolutely sure?'
+    );
+
+    if (!confirmed) return;
+
+    const doubleConfirmed = window.confirm(
+      'This is your FINAL WARNING.\n\n' +
+      'Type "DELETE" in your mind and click OK to confirm permanent data destruction.'
+    );
+
+    if (!doubleConfirmed) return;
+
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/business', {
+        method: 'DELETE',
+        headers,
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error?.message || 'Failed to delete business data');
+      }
+
+      setSuccess('All business data has been permanently deleted!');
+      setTimeout(() => {
+        router.push('/onboarding');
+        router.refresh();
+      }, 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete business data');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExportData = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const headers = await getAuthHeaders();
+
+      const [businessRes, customersRes, transactionsRes, productsRes, categoriesRes, receiptsRes, settingsRes] = await Promise.all([
+        fetch('/api/business', { headers }),
+        fetch('/api/customers?limit=1000', { headers }),
+        fetch('/api/transactions?limit=1000', { headers }),
+        fetch('/api/products?limit=1000', { headers }),
+        fetch('/api/categories?limit=1000', { headers }),
+        fetch('/api/receipts?limit=1000', { headers }),
+        fetch('/api/settings', { headers }),
+      ]);
+
+      const businessData = businessRes.ok ? await businessRes.json() : { business: null };
+      const customersData = customersRes.ok ? await customersRes.json() : { customers: [] };
+      const transactionsData = transactionsRes.ok ? await transactionsRes.json() : { transactions: [] };
+      const productsData = productsRes.ok ? await productsRes.json() : { products: [] };
+      const categoriesData = categoriesRes.ok ? await categoriesRes.json() : { categories: [] };
+      const receiptsData = receiptsRes.ok ? await receiptsRes.json() : { receipts: [] };
+      const settingsData = settingsRes.ok ? await settingsRes.json() : { settings: null };
+
+      const exportData = {
+        exportDate: new Date().toISOString(),
+        version: '1.0',
+        business: businessData.business,
+        customers: customersData.customers || [],
+        transactions: transactionsData.transactions || [],
+        products: productsData.products || [],
+        categories: categoriesData.categories || [],
+        receipts: receiptsData.receipts || [],
+        settings: settingsData.settings,
+      };
+
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `hisab-kitab-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setSuccess(t('exportData', 'Data exported successfully! Check your downloads folder.'));
+      setTimeout(() => setSuccess(null), 5000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export data');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !business) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6 flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
@@ -269,7 +358,6 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="general">
@@ -290,7 +378,6 @@ export default function SettingsPage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* General Tab */}
         <TabsContent value="general" className="mt-6 space-y-6">
           <Card>
             <CardHeader>
@@ -553,7 +640,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* WhatsApp Tab */}
         <TabsContent value="whatsapp" className="mt-6 space-y-6">
           <Card>
             <CardHeader>
@@ -614,7 +700,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Notifications Tab */}
         <TabsContent value="notifications" className="mt-6 space-y-6">
           <Card>
             <CardHeader>
@@ -637,47 +722,6 @@ export default function SettingsPage() {
                     onCheckedChange={checked => handleSettingsChange('email_enabled', checked)}
                   />
                 </div>
-
-                <div className="grid gap-4 md:grid-cols-2 border-t pt-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm">Daily outstanding summary</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm">Payment receipt confirmations</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm">Weekly business reports</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm">System maintenance alerts</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="space-y-4 border-t pt-6">
-                <h4 className="font-semibold text-gray-900">WhatsApp Notifications</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm">Payment receipt to customers</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm">Outstanding payment reminders</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm">Statement notifications</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm">Welcome messages for new customers</span>
-                  </label>
-                </div>
               </div>
             </CardContent>
             <CardFooter className="flex justify-end">
@@ -698,7 +742,6 @@ export default function SettingsPage() {
           </Card>
         </TabsContent>
 
-        {/* Advanced Tab */}
         <TabsContent value="advanced" className="mt-6 space-y-6">
           <Card className="border-red-200">
             <CardHeader>
@@ -712,21 +755,58 @@ export default function SettingsPage() {
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                 <h4 className="font-medium text-red-800 mb-2">Delete Business Data</h4>
                 <p className="text-sm text-red-700 mb-4">
-                  This will permanently delete all customers, transactions, products, and settings for this business.
-                  This action cannot be undone.
+                  {language === 'hi'
+                    ? 'इस तरह के सभी ग्राहकों, लेन-देनों, उत्पादों और सेटिंग्स को हटाया जाएगा।'
+                    : 'This will permanently delete all customers, transactions, products, and settings for this business.'}
+                  <br />
+                  {language === 'hi'
+                    ? 'यह कार्य उलटा नहीं सकता।'
+                    : 'This action cannot be undone.'}
                 </p>
-                <Button variant="destructive" className="w-full sm:w-auto">
-                  Delete All Data
+                <Button
+                  variant="destructive"
+                  className="w-full sm:w-auto"
+                  onClick={handleDeleteAllData}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {language === 'hi' ? 'हट रहा है...' : 'Deleting...'}
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      {language === 'hi' ? 'सभी डेटा हटाएं' : 'Delete All Data'}
+                    </>
+                  )}
                 </Button>
               </div>
 
               <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <h4 className="font-medium text-yellow-800 mb-2">Export All Data</h4>
                 <p className="text-sm text-yellow-700 mb-4">
-                  Download a complete backup of your business data in JSON format.
+                  {language === 'hi'
+                    ? 'अपने व्यापार के डेटा का पूरा बैकअप JSON फॉर्मेट में डाउनलोड करें।'
+                    : 'Download a complete backup of your business data in JSON format.'}
                 </p>
-                <Button variant="outline" className="w-full sm:w-auto">
-                  Export Data
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  onClick={handleExportData}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {language === 'hi' ? 'निर्यात कर रहा है...' : 'Exporting...'}
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      {language === 'hi' ? 'डेटा निर्यात करें' : 'Export Data'}
+                    </>
+                  )}
                 </Button>
               </div>
             </CardContent>

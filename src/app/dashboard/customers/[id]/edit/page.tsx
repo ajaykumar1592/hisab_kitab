@@ -14,6 +14,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import { useTranslation } from '@/lib/i18n';
 
 const customerSchema = z.object({
   name: z.string().min(1, 'Name is required').max(255),
@@ -68,6 +70,7 @@ interface Customer {
 export default function EditCustomerPage() {
   const params = useParams();
   const router = useRouter();
+  const { t, language } = useTranslation();
   const customerId = params.id as string;
 
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -96,32 +99,30 @@ export default function EditCustomerPage() {
   const mobileNumber = watch('mobile_number');
   const whatsappNumber = watch('whatsapp_number');
 
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
+
   const fetchCustomer = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/customers/${customerId}`);
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/customers/${customerId}`, { headers });
       const result = await response.json();
 
-      let c = result?.customer;
+      const c = result?.customer;
       if (!c) {
-        c = {
-          id: customerId,
-          name: 'Rajesh Kumar',
-          mobile_number: '9876543210',
-          alternate_mobile_number: '',
-          whatsapp_number: '9876543210',
-          business_type: 'Retailer',
-          address: '123 Main Street',
-          city: 'Mumbai',
-          state: 'Maharashtra',
-          pin_code: '400001',
-          email: 'rajesh@example.com',
-          gstin: '27ABCDE1234F1Z5',
-          opening_balance: 5000,
-          opening_balance_type: 'receivable',
-          notes: 'Regular customer',
-          status: 'active',
-        };
+        throw new Error('Customer not found');
       }
 
       setCustomer(c);
@@ -143,22 +144,7 @@ export default function EditCustomerPage() {
         status: c.status || 'active',
       });
     } catch (err) {
-      const fallbackCustomer = {
-        id: customerId,
-        name: 'Rajesh Kumar',
-        mobile_number: '9876543210',
-        opening_balance: 5000,
-        opening_balance_type: 'receivable',
-        status: 'active',
-      };
-      setCustomer(fallbackCustomer);
-      reset({
-        name: fallbackCustomer.name,
-        mobile_number: fallbackCustomer.mobile_number,
-        opening_balance: 5000,
-        opening_balance_type: 'receivable',
-        status: 'active',
-      });
+      setError(err instanceof Error ? err.message : 'Failed to load customer');
     } finally {
       setLoading(false);
     }
@@ -182,9 +168,10 @@ export default function EditCustomerPage() {
     setIsSubmitting(true);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/customers/${customerId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...data,
           mobile_number: data.mobile_number || null,
@@ -297,11 +284,12 @@ export default function EditCustomerPage() {
             {/* Name - Required */}
             <div className="space-y-2">
               <Label htmlFor="name" className="flex items-center gap-1">
-                Name <span className="text-red-500">*</span>
+                {t('fullName')}
               </Label>
               <Input
                 id="name"
-                placeholder="Customer name"
+                placeholder={language === 'hi' ? 'ग्राहक का नाम' : 'Customer name'}
+                className={errors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('name')}
                 disabled={isSubmitting}
               />
@@ -314,12 +302,13 @@ export default function EditCustomerPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="mobile_number" className="flex items-center gap-1">
-                  Mobile Number <span className="text-red-500">*</span>
+                  {t('mobileNumber')} <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="mobile_number"
                   type="tel"
                   placeholder="9876543210"
+                  className={errors.mobile_number ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   value={mobileNumber}
                   onChange={(e) => handleMobileChange(e.target.value)}
                   disabled={isSubmitting}
@@ -328,7 +317,7 @@ export default function EditCustomerPage() {
                 {mobileExists && (
                   <p className="text-sm text-orange-600 flex items-center gap-1">
                     <AlertCircle className="w-3 h-3" />
-                    This mobile number already exists
+                    {language === 'hi' ? 'यह मोबाइल नंबर पहले से मौजूद है' : 'This mobile number already exists'}
                   </p>
                 )}
                 {errors.mobile_number && (
@@ -337,11 +326,14 @@ export default function EditCustomerPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="whatsapp_number">WhatsApp Number</Label>
+                <Label htmlFor="whatsapp_number">
+                  {t('whatsappNumber')}
+                </Label>
                 <Input
                   id="whatsapp_number"
                   type="tel"
                   placeholder="9876543210"
+                  className={errors.whatsapp_number ? 'border-red-500' : ''}
                   {...register('whatsapp_number')}
                   disabled={isSubmitting}
                   maxLength={15}

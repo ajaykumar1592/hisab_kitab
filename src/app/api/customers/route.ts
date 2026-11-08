@@ -179,3 +179,126 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export async function PUT(request: NextRequest) {
+  try {
+    const { supabase, businessId, user } = await getAuthContext(request);
+    const body = await request.json();
+
+    // Extract customer ID from body or find via mobile check
+    const customerId = body.id;
+    if (!customerId) {
+      return NextResponse.json(
+        { error: { message: 'Customer ID is required' } },
+        { status: 400 }
+      );
+    }
+
+    // Validate input
+    const validation = customerSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: { message: 'Validation failed', details: validation.error.flatten() } },
+        { status: 400 }
+      );
+    }
+
+    // Check for duplicate mobile number within business (excluding current customer)
+    if (body.mobile_number) {
+      const { data: existing } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('business_id', businessId)
+        .eq('mobile_number', body.mobile_number)
+        .neq('id', customerId)
+        .is('deleted_at', null)
+        .maybeSingle();
+
+      if (existing) {
+        return NextResponse.json(
+          { error: { message: 'A customer with this mobile number already exists' } },
+          { status: 409 }
+        );
+      }
+    }
+
+    // Update customer
+    const { data: customer, error } = await supabase
+      .from('customers')
+      .update({
+        ...validation.data,
+        mobile_number: body.mobile_number || null,
+        alternate_mobile_number: body.alternate_mobile_number || null,
+        whatsapp_number: body.whatsapp_number || null,
+        business_type: body.business_type || null,
+        address: body.address || null,
+        city: body.city || null,
+        state: body.state || null,
+        pin_code: body.pin_code || null,
+        email: body.email || null,
+        gstin: body.gstin || null,
+        notes: body.notes || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', customerId)
+      .eq('business_id', businessId)
+      .is('deleted_at', null)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json(
+        { error: { message: 'Failed to update customer', details: error.message } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ customer });
+  } catch (error) {
+    console.error('Customers PUT error:', error);
+    return NextResponse.json(
+      { error: { message: 'Internal server error' } },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { supabase, businessId } = await getAuthContext(request);
+    const url = new URL(request.url);
+    const customerId = url.pathname.split('/').pop();
+
+    if (!customerId) {
+      return NextResponse.json(
+        { error: { message: 'Customer ID is required' } },
+        { status: 400 }
+      );
+    }
+
+    // Soft delete - set deleted_at timestamp
+    const { data: customer, error } = await supabase
+      .from('customers')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', customerId)
+      .eq('business_id', businessId)
+      .is('deleted_at', null)
+      .select()
+      .single();
+
+    if (error) {
+      return NextResponse.json(
+        { error: { message: 'Failed to archive customer', details: error.message } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: 'Customer archived successfully', customer });
+  } catch (error) {
+    console.error('Customers DELETE error:', error);
+    return NextResponse.json(
+      { error: { message: 'Internal server error' } },
+      { status: 500 }
+    );
+  }
+}

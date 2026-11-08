@@ -54,17 +54,15 @@ export default function NewTransactionPage() {
     handleSubmit,
     watch,
     setValue,
+    setFocus,
     formState: { errors },
   } = useForm<TransactionForm>({
     resolver: zodResolver(transactionSchema),
     defaultValues: {
       transaction_date: new Date().toISOString().split('T')[0],
       transaction_type: (prefillType || 'credit') as 'credit' | 'debit' | 'payment' | 'opening' | 'adjustment' | 'sales_return' | 'purchase_return',
-    } as TransactionForm,
+    },
   });
-
-  const transactionType = watch('transaction_type');
-  const amount = watch('amount');
 
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -99,19 +97,27 @@ export default function NewTransactionPage() {
     }
   };
 
-  // Fetch customers on load
   useEffect(() => {
     fetchCustomers();
     fetchNextReferenceNumber(prefillType || 'credit');
   }, []);
 
-  const mockCustomersList: Customer[] = [
-    { id: '1', name: 'Rajesh Kumar', mobile_number: '9876543210', balance: 15000 },
-    { id: '2', name: 'Priya Sharma', mobile_number: '8765432109', balance: -5000 },
-    { id: '3', name: 'Amit Patel', mobile_number: '7654321098', balance: 25000 },
-    { id: '4', name: 'Sneha Singh', mobile_number: '6543210987', balance: 0 },
-    { id: '5', name: 'Vikram Reddy', mobile_number: '5432109876', balance: -12000 },
-  ];
+  useEffect(() => {
+    if (prefillCustomerId) {
+      setValue('customer_id', prefillCustomerId);
+    }
+  }, [prefillCustomerId, setValue]);
+
+  const onInvalid = () => {
+    setError('Please check all required fields and fix validation errors before submitting.');
+    const errorKeys = Object.keys(errors);
+    if (errorKeys.length > 0) {
+      setFocus(errorKeys[0] as any);
+    }
+  };
+
+  const transactionType = watch('transaction_type');
+  const amount = watch('amount');
 
   const fetchCustomers = async () => {
     try {
@@ -120,7 +126,7 @@ export default function NewTransactionPage() {
       const response = await fetch('/api/customers?status=active&limit=100', { headers });
       if (response.ok) {
         const result = await response.json();
-        if (result.customers && result.customers.length > 0) {
+        if (result.customers) {
           setCustomers(result.customers);
           return;
         }
@@ -128,25 +134,9 @@ export default function NewTransactionPage() {
     } catch (err) {
       console.error('Failed to fetch customers:', err);
     } finally {
-      setCustomers(prev => prev.length > 0 ? prev : mockCustomersList);
       setLoadingCustomers(false);
     }
   };
-
-  // Pre-fill customer if provided
-  useEffect(() => {
-    if (prefillCustomerId) {
-      setValue('customer_id', prefillCustomerId);
-    }
-  }, [prefillCustomerId, setValue]);
-
-  // Auto-update reference number format when transaction type changes
-  useEffect(() => {
-    if (transactionType) {
-      fetchNextReferenceNumber(transactionType);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactionType]);
 
   const onSubmit = async (data: TransactionForm) => {
     setError(null);
@@ -169,10 +159,20 @@ export default function NewTransactionPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error?.message || 'Failed to create transaction');
+        if (result.error?.details) {
+          const detailMsg = Object.entries(result.error.details)
+            .map(([field, msg]: any) => `${field}: ${msg}`)
+            .join(', ');
+          setError(`Validation failed: ${detailMsg}`);
+        } else {
+          throw new Error(result.error?.message || 'Failed to create transaction');
+        }
+        return;
       }
 
-      setSuccess('Transaction recorded successfully!');
+      const typeName = getTypeLabel(transactionType);
+      setSuccess(`${typeName} recorded successfully!`);
+
       setTimeout(() => {
         if (prefillCustomerId) {
           router.push(`/dashboard/customers/${prefillCustomerId}`);
@@ -190,7 +190,7 @@ export default function NewTransactionPage() {
 
   const getTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      credit: 'Credit Sale (Customer owes)',
+      credit: 'Credit Sale',
       debit: 'Debit / Purchase',
       payment: 'Payment Received',
       opening: 'Opening Balance',
@@ -214,9 +214,14 @@ export default function NewTransactionPage() {
     return descriptions[type] || '';
   };
 
+  useEffect(() => {
+    if (transactionType) {
+      fetchNextReferenceNumber(transactionType);
+    }
+  }, [transactionType]);
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Page Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
           <Link href={prefillCustomerId ? `/dashboard/customers/${prefillCustomerId}` : '/dashboard/ledger'}>
@@ -249,8 +254,7 @@ export default function NewTransactionPage() {
           <CardDescription>Enter the transaction information</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Customer Selection */}
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="customer_id" className="flex items-center gap-1">
                 Customer <span className="text-red-500">*</span>
@@ -265,7 +269,7 @@ export default function NewTransactionPage() {
                   value={watch('customer_id')}
                   onValueChange={(value) => setValue('customer_id', value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={errors.customer_id ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select customer" />
                   </SelectTrigger>
                   <SelectContent>
@@ -292,7 +296,6 @@ export default function NewTransactionPage() {
               )}
             </div>
 
-            {/* Transaction Type */}
             <div className="space-y-2">
               <Label htmlFor="transaction_type" className="flex items-center gap-1">
                 Transaction Type <span className="text-red-500">*</span>
@@ -301,7 +304,7 @@ export default function NewTransactionPage() {
                 value={transactionType}
                 onValueChange={(value) => setValue('transaction_type', value as TransactionForm['transaction_type'])}
               >
-                <SelectTrigger>
+                <SelectTrigger className={errors.transaction_type ? 'border-red-500' : ''}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -322,12 +325,12 @@ export default function NewTransactionPage() {
               )}
             </div>
 
-            {/* Date */}
             <div className="space-y-2">
               <Label htmlFor="transaction_date">Date <span className="text-red-500">*</span></Label>
               <Input
                 id="transaction_date"
                 type="date"
+                className={errors.transaction_date ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('transaction_date')}
                 disabled={isSubmitting}
               />
@@ -336,7 +339,6 @@ export default function NewTransactionPage() {
               )}
             </div>
 
-            {/* Amount */}
             <div className="space-y-2">
               <Label htmlFor="amount" className="flex items-center gap-1">
                 Amount <span className="text-red-500">*</span>
@@ -347,6 +349,7 @@ export default function NewTransactionPage() {
                 step="0.01"
                 min="0.01"
                 placeholder="0.00"
+                className={errors.amount ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('amount', { valueAsNumber: true })}
                 disabled={isSubmitting}
               />
@@ -355,13 +358,13 @@ export default function NewTransactionPage() {
               )}
             </div>
 
-            {/* Description */}
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
               <Textarea
                 id="description"
                 placeholder="Transaction description (e.g., 'Sale of 50 cement bags')"
                 rows={2}
+                className={errors.description ? 'border-red-500' : ''}
                 {...register('description')}
                 disabled={isSubmitting}
               />
@@ -372,7 +375,6 @@ export default function NewTransactionPage() {
 
             <Separator />
 
-            {/* Reference & Payment Method */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -392,15 +394,14 @@ export default function NewTransactionPage() {
                   <Input
                     id="reference_number"
                     placeholder={refNumberLoading ? 'Generating...' : 'e.g., INV-2026-001'}
+                    className={errors.reference_number ? 'border-red-500' : ''}
                     {...register('reference_number')}
                     disabled={isSubmitting}
-                    className="pr-8"
                   />
                   {refNumberLoading && (
                     <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
                   )}
                 </div>
-                <p className="text-xs text-gray-400">Auto-filled from Settings → Invoice format. You can edit it.</p>
                 {errors.reference_number && (
                   <p className="text-sm text-red-600">{errors.reference_number.message}</p>
                 )}
@@ -412,7 +413,7 @@ export default function NewTransactionPage() {
                   value={watch('payment_method')}
                   onValueChange={(value) => setValue('payment_method', value as TransactionForm['payment_method'])}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className={errors.payment_method ? 'border-red-500' : ''}>
                     <SelectValue placeholder="Select method" />
                   </SelectTrigger>
                   <SelectContent>
@@ -429,7 +430,6 @@ export default function NewTransactionPage() {
               </div>
             </div>
 
-            {/* Submit Buttons */}
             <CardFooter className="flex flex-col sm:flex-row gap-4 border-t pt-6">
               <Button type="button" variant="outline" asChild>
                 <Link href={prefillCustomerId ? `/dashboard/customers/${prefillCustomerId}` : '/dashboard/ledger'}>Cancel</Link>

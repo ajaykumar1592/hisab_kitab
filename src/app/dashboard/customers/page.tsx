@@ -14,6 +14,20 @@ import { format } from 'date-fns';
 import { useTranslation } from '@/lib/i18n';
 import { createClient } from '@/lib/supabase/client';
 
+const getAuthHeaders = async () => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+  } catch (e) {
+    console.warn('Could not read session token', e);
+  }
+  return headers;
+};
+
 interface Customer {
   id: string;
   name: string;
@@ -32,90 +46,28 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Mock data for UI demonstration
-  const mockCustomers: Customer[] = [
-    {
-      id: '1',
-      name: 'Rajesh Kumar',
-      mobile_number: '9876543210',
-      whatsapp_number: '9876543210',
-      balance: 15000,
-      last_transaction_date: '2024-01-15',
-      status: 'active',
-    },
-    {
-      id: '2',
-      name: 'Priya Sharma',
-      mobile_number: '8765432109',
-      whatsapp_number: '8765432109',
-      balance: -5000,
-      last_transaction_date: '2024-01-14',
-      status: 'active',
-    },
-    {
-      id: '3',
-      name: 'Amit Patel',
-      mobile_number: '7654321098',
-      balance: 25000,
-      last_transaction_date: '2024-01-10',
-      status: 'active',
-    },
-    {
-      id: '4',
-      name: 'Sneha Singh',
-      mobile_number: '6543210987',
-      whatsapp_number: '6543210987',
-      balance: 0,
-      last_transaction_date: '2024-01-05',
-      status: 'active',
-    },
-    {
-      id: '5',
-      name: 'Vikram Reddy',
-      mobile_number: '5432109876',
-      balance: -12000,
-      last_transaction_date: '2024-01-01',
-      status: 'archived',
-    },
-  ];
-
-  const getAuthHeaders = async () => {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
-    } catch (e) {
-      console.warn('Could not read session token', e);
-    }
-    return headers;
-  };
-
   useEffect(() => {
     async function loadCustomers() {
       try {
+        setLoading(true);
         const headers = await getAuthHeaders();
         const response = await fetch('/api/customers', { headers });
         if (response.ok) {
           const data = await response.json();
-          if (data?.customers && data.customers.length > 0) {
+          if (data?.customers) {
             setCustomers(data.customers);
-            return;
           }
         }
       } catch (e) {
-        // use fallback
+        console.error('Failed to load customers:', e);
+      } finally {
+        setLoading(false);
       }
-      setCustomers(mockCustomers);
     }
     loadCustomers();
   }, []);
 
-  const activeCustomersList = customers.length > 0 ? customers : mockCustomers;
-
-  const filteredCustomers = activeCustomersList
+  const filteredCustomers = customers
     .filter((c) => {
       if (statusFilter !== 'all' && c.status !== statusFilter) return false;
       if (search) {
@@ -130,7 +82,7 @@ export default function CustomersPage() {
     })
     .sort((a, b) => b.balance - a.balance);
 
-  const handleAction = (action: string, customer: Customer) => {
+  const handleAction = async (action: string, customer: Customer) => {
     switch (action) {
       case 'view':
         router.push(`/dashboard/customers/${customer.id}`);
@@ -149,6 +101,25 @@ export default function CustomersPage() {
         break;
       case 'edit':
         router.push(`/dashboard/customers/${customer.id}/edit`);
+        break;
+      case 'delete':
+        if (confirm(`Are you sure you want to delete ${customer.name}? This will archive the customer.`)) {
+          try {
+            const headers = await getAuthHeaders();
+            const response = await fetch(`/api/customers/${customer.id}`, {
+              method: 'DELETE',
+              headers,
+            });
+            if (response.ok) {
+              setCustomers(prev => prev.filter(c => c.id !== customer.id));
+            } else {
+              const result = await response.json();
+              alert(result.error?.message || 'Failed to delete customer');
+            }
+          } catch (err) {
+            alert('An error occurred while deleting the customer');
+          }
+        }
         break;
       case 'archive':
         setCustomers((prev) =>
@@ -308,6 +279,9 @@ export default function CustomersPage() {
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => handleAction('edit', customer)} title="Edit">
                             <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleAction('delete', customer)} title="Delete">
+                            <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>
                       </td>

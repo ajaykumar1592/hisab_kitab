@@ -87,3 +87,89 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export async function PUT(request: NextRequest) {
+  try {
+    const { supabase, businessId } = await getAuthContext(request);
+    const url = new URL(request.url);
+    const categoryId = url.pathname.split('/').pop();
+
+    if (!categoryId) {
+      return NextResponse.json(
+        { error: { message: 'Category ID is required' } },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+
+    const validation = productCategoryUpdateSchema.safeParse(body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: { message: 'Validation failed', details: validation.error.flatten() } },
+        { status: 400 }
+      );
+    }
+
+    const { data: category, error } = await supabase
+      .from('product_categories')
+      .update(validation.data)
+      .eq('id', categoryId)
+      .eq('business_id', businessId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Category update error:', error);
+      return NextResponse.json(
+        { error: { message: 'Failed to update category' } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ category });
+  } catch (error) {
+    console.error('Categories PUT error:', error);
+    return NextResponse.json(
+      { error: { message: 'Internal server error' } },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { supabase, businessId } = await getAuthContext(request);
+    const url = new URL(request.url);
+    const categoryId = url.pathname.split('/').pop();
+
+    if (!categoryId) {
+      return NextResponse.json(
+        { error: { message: 'Category ID is required' } },
+        { status: 400 }
+      );
+    }
+
+    const { error } = await supabase
+      .from('product_categories')
+      .delete()
+      .eq('id', categoryId)
+      .eq('business_id', businessId);
+
+    if (error) {
+      console.error('Category delete error:', error);
+      return NextResponse.json(
+        { error: { message: 'Failed to delete category' } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: 'Category deleted successfully' });
+  } catch (error) {
+    console.error('Categories DELETE error:', error);
+    return NextResponse.json(
+      { error: { message: 'Internal server error' } },
+      { status: 500 }
+    );
+  }
+}

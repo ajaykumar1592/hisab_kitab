@@ -82,3 +82,36 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { supabase, businessId } = await getAuthContext(request);
+
+    // Delete related records (Supabase RLS/Constraints might need handling if not cascading)
+    // Deleting the business record itself will cascade delete related records if set up with ON DELETE CASCADE in the database.
+    // If NOT set to cascade, we would need to delete children first.
+    // Based on schema, 'transactions', 'customers', 'products', 'product_categories', 'payment_receipts', 'whatsapp_messages', 'business_settings', 'audit_logs'
+    // all have 'ON DELETE CASCADE' on 'business_id'.
+
+    const { error } = await supabase
+      .from('businesses')
+      .delete()
+      .eq('id', businessId);
+
+    if (error) {
+      console.error('Business DELETE error:', error);
+      return NextResponse.json(
+        { error: { message: 'Failed to delete business data' } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: 'All business data deleted successfully' });
+  } catch (error) {
+    console.error('Business DELETE error:', error);
+    return NextResponse.json(
+      { error: { message: 'Internal server error' } },
+      { status: 500 }
+    );
+  }
+}
