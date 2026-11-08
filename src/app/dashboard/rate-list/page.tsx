@@ -127,9 +127,9 @@ export default function RateListPage() {
       if (search) {
         const query = search.toLowerCase();
         return (
-          p.item_name.toLowerCase().includes(query) ||
-          (p.item_code && p.item_code.toLowerCase().includes(query)) ||
-          p.category.toLowerCase().includes(query)
+          (p.item_name || '').toLowerCase().includes(query) ||
+          (p.item_code ? p.item_code.toLowerCase().includes(query) : false) ||
+          (p.category || '').toLowerCase().includes(query)
         );
       }
       return true;
