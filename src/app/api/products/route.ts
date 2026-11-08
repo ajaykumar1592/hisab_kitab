@@ -24,11 +24,11 @@ export async function GET(request: NextRequest) {
       dbQuery = dbQuery.or(`item_name.ilike.%${queryData.search}%,item_code.ilike.%${queryData.search}%,description.ilike.%${queryData.search}%`);
     }
 
-    if (queryData.category_id) {
+    if (queryData.category_id && queryData.category_id.trim() !== '' && queryData.category_id !== 'all') {
       dbQuery = dbQuery.eq('category_id', queryData.category_id);
     }
 
-    if (queryData.status) {
+    if (queryData.status && queryData.status.trim() !== '' && queryData.status !== 'all') {
       dbQuery = dbQuery.eq('status', queryData.status);
     }
 

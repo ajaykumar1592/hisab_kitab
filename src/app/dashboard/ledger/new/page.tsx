@@ -13,7 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Users } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Users, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 
@@ -47,6 +47,7 @@ export default function NewTransactionPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [refNumberLoading, setRefNumberLoading] = useState(false);
 
   const {
     register,
@@ -79,9 +80,29 @@ export default function NewTransactionPage() {
     return headers;
   };
 
+  const fetchNextReferenceNumber = async (type: string = 'invoice') => {
+    setRefNumberLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const refType = (type === 'payment') ? 'receipt' : 'invoice';
+      const response = await fetch(`/api/transactions/next-ref?type=${refType}`, { headers });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.reference_number) {
+          setValue('reference_number', data.reference_number);
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch next reference number', err);
+    } finally {
+      setRefNumberLoading(false);
+    }
+  };
+
   // Fetch customers on load
   useEffect(() => {
     fetchCustomers();
+    fetchNextReferenceNumber(prefillType || 'credit');
   }, []);
 
   const mockCustomersList: Customer[] = [
@@ -118,6 +139,14 @@ export default function NewTransactionPage() {
       setValue('customer_id', prefillCustomerId);
     }
   }, [prefillCustomerId, setValue]);
+
+  // Auto-update reference number format when transaction type changes
+  useEffect(() => {
+    if (transactionType) {
+      fetchNextReferenceNumber(transactionType);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactionType]);
 
   const onSubmit = async (data: TransactionForm) => {
     setError(null);
@@ -346,13 +375,32 @@ export default function NewTransactionPage() {
             {/* Reference & Payment Method */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="reference_number">Reference Number</Label>
-                <Input
-                  id="reference_number"
-                  placeholder="e.g., INV-001, PY-001"
-                  {...register('reference_number')}
-                  disabled={isSubmitting}
-                />
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="reference_number">Reference / Invoice Number</Label>
+                  <button
+                    type="button"
+                    onClick={() => fetchNextReferenceNumber(transactionType)}
+                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 disabled:opacity-50"
+                    disabled={refNumberLoading || isSubmitting}
+                    title="Generate next number"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${refNumberLoading ? 'animate-spin' : ''}`} />
+                    Auto-generate
+                  </button>
+                </div>
+                <div className="relative">
+                  <Input
+                    id="reference_number"
+                    placeholder={refNumberLoading ? 'Generating...' : 'e.g., INV-2026-001'}
+                    {...register('reference_number')}
+                    disabled={isSubmitting}
+                    className="pr-8"
+                  />
+                  {refNumberLoading && (
+                    <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
+                  )}
+                </div>
+                <p className="text-xs text-gray-400">Auto-filled from Settings → Invoice format. You can edit it.</p>
                 {errors.reference_number && (
                   <p className="text-sm text-red-600">{errors.reference_number.message}</p>
                 )}

@@ -122,7 +122,7 @@ export default function RateListPage() {
   const filteredProducts = products
     .filter((p) => {
       if (statusFilter !== 'all' && p.status !== statusFilter) return false;
-      if (categoryFilter !== 'all' && p.category !== categoryFilter) return false;
+      if (categoryFilter !== 'all' && p.category_id !== categoryFilter) return false;
       if (search) {
         const query = search.toLowerCase();
         return (
@@ -216,7 +216,7 @@ export default function RateListPage() {
               <SelectContent>
                 <SelectItem value="all">{isHindi ? 'सभी श्रेणियाँ' : 'All Categories'}</SelectItem>
                 {categories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                  <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

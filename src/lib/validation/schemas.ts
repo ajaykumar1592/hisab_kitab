@@ -69,8 +69,8 @@ export const productCategoryUpdateSchema = productCategorySchema.partial();
 // Product query schema
 export const productQuerySchema = z.object({
   search: z.string().optional(),
-  category_id: z.string().uuid().optional(),
-  status: z.enum(['active', 'inactive']).optional(),
+  category_id: z.string().optional(),
+  status: z.string().optional(),
   sort_by: z.string().optional(),
   sort_order: z.enum(['asc', 'desc']).optional(),
   limit: z.coerce.number().min(1).max(100).optional(),

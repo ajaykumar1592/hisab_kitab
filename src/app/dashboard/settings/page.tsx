@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2, CheckCircle2, AlertCircle, Save, Building2, Globe, CreditCard, Bell, Shield, Smartphone, FileText, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation, Language } from '@/lib/i18n';
+import { createClient } from '@/lib/supabase/client';
 
 interface Business {
   id: string;
@@ -101,6 +102,24 @@ const states = [
   'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
 ];
 
+// Helper function to preview a format template
+function previewFormat(format: string, seq = 1): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const yy = String(year).slice(-2);
+  return format
+    .replace('{YYYY}', String(year))
+    .replace('{YY}', yy)
+    .replace('{MM}', month)
+    .replace('{DD}', day)
+    .replace('{SEQ5}', String(seq).padStart(5, '0'))
+    .replace('{SEQ4}', String(seq).padStart(4, '0'))
+    .replace('{SEQ3}', String(seq).padStart(3, '0'))
+    .replace('{SEQ}', String(seq).padStart(3, '0'));
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const { t, language, setLanguage } = useTranslation();
@@ -114,6 +133,49 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
+
+  // Load real settings from DB on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      setLoading(true);
+      try {
+        const headers = await getAuthHeaders();
+        const [bizRes, settingsRes] = await Promise.all([
+          fetch('/api/business', { headers }),
+          fetch('/api/settings', { headers }),
+        ]);
+        if (bizRes.ok) {
+          const bizData = await bizRes.json();
+          if (bizData.business) setBusiness(bizData.business);
+        }
+        if (settingsRes.ok) {
+          const settingsData = await settingsRes.json();
+          if (settingsData.settings) {
+            setSettings(prev => ({ ...prev, ...settingsData.settings }));
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load settings, using defaults', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const handleBusinessChange = (field: string, value: any) => {
     setBusiness(prev => ({ ...prev, [field]: value }));
@@ -129,12 +191,16 @@ export default function SettingsPage() {
     setSuccess(null);
 
     try {
-      // In real app: await fetch('/api/business', { method: 'PUT', body: JSON.stringify(business) });
-      // await fetch('/api/settings', { method: 'PUT', body: JSON.stringify(settings) });
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSuccess('General settings saved successfully!');
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/business', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(business),
+      });
+      if (!response.ok) throw new Error('Failed to save business info');
+      setSuccess('Business information saved successfully!');
     } catch (err) {
-      setError('Failed to save settings');
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -146,11 +212,16 @@ export default function SettingsPage() {
     setSuccess(null);
 
     try {
-      // In real app: await fetch('/api/settings', { method: 'PUT', body: JSON.stringify(settings) });
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/settings', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(settings),
+      });
+      if (!response.ok) throw new Error('Failed to save settings');
       setSuccess('Settings saved successfully!');
     } catch (err) {
-      setError('Failed to save settings');
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -434,7 +505,15 @@ export default function SettingsPage() {
                     value={settings.receipt_number_format}
                     onChange={e => handleSettingsChange('receipt_number_format', e.target.value)}
                   />
-                  <p className="text-sm text-gray-500">Available: {'YYYY'}, {'SEQ'}, {'MM'}, {'DD'}</p>
+                  <p className="text-xs text-gray-500">
+                    Tokens: <code className="bg-gray-100 px-1 rounded">{'{YYYY}'}</code> <code className="bg-gray-100 px-1 rounded">{'{YY}'}</code> <code className="bg-gray-100 px-1 rounded">{'{MM}'}</code> <code className="bg-gray-100 px-1 rounded">{'{DD}'}</code> <code className="bg-gray-100 px-1 rounded">{'{SEQ}'}</code> <code className="bg-gray-100 px-1 rounded">{'{SEQ4}'}</code>
+                  </p>
+                  {settings.receipt_number_format && (
+                    <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                      <span className="text-blue-600 font-medium">Preview:</span>
+                      <code className="text-blue-800 font-mono">{previewFormat(settings.receipt_number_format, 1)}</code>
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="invoice_format">Invoice Number Format</Label>
@@ -444,7 +523,15 @@ export default function SettingsPage() {
                     value={settings.invoice_number_format}
                     onChange={e => handleSettingsChange('invoice_number_format', e.target.value)}
                   />
-                  <p className="text-sm text-gray-500">Available: {'YYYY'}, {'SEQ'}, {'MM'}, {'DD'}</p>
+                  <p className="text-xs text-gray-500">
+                    Tokens: <code className="bg-gray-100 px-1 rounded">{'{YYYY}'}</code> <code className="bg-gray-100 px-1 rounded">{'{YY}'}</code> <code className="bg-gray-100 px-1 rounded">{'{MM}'}</code> <code className="bg-gray-100 px-1 rounded">{'{DD}'}</code> <code className="bg-gray-100 px-1 rounded">{'{SEQ}'}</code> <code className="bg-gray-100 px-1 rounded">{'{SEQ4}'}</code>
+                  </p>
+                  {settings.invoice_number_format && (
+                    <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded text-sm">
+                      <span className="text-green-600 font-medium">Preview:</span>
+                      <code className="text-green-800 font-mono">{previewFormat(settings.invoice_number_format, 1)}</code>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
