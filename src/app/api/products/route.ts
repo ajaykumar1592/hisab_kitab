@@ -50,10 +50,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const transformedProducts = (products || []).map(p => ({
-      ...p,
-      category: p.product_categories?.name || 'Uncategorized',
-    }));
+    const transformedProducts = (products || []).map(p => {
+      let hsn_code = (p as any).hsn_code || '';
+      if (!hsn_code && p.description) {
+        const match = p.description.match(/HSN:\s*([A-Za-z0-9]+)/i);
+        if (match) hsn_code = match[1];
+      }
+      return {
+        ...p,
+        category: p.product_categories?.name || 'Uncategorized',
+        hsn_code,
+      };
+    });
 
     return NextResponse.json({
       products: transformedProducts,
@@ -104,31 +112,66 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (body.category_id) {
+    let validCategoryId = body.category_id || null;
+    if (validCategoryId) {
       const { data: category } = await supabase
         .from('product_categories')
         .select('id')
-        .eq('id', body.category_id)
+        .eq('id', validCategoryId)
         .eq('business_id', businessId)
         .single();
 
       if (!category) {
-        return NextResponse.json(
-          { error: { message: 'Category not found in this business' } },
-          { status: 404 }
-        );
+        // Fall back to first category of business if provided one wasn't found
+        const { data: firstCategory } = await supabase
+          .from('product_categories')
+          .select('id')
+          .eq('business_id', businessId)
+          .limit(1)
+          .single();
+
+        validCategoryId = firstCategory?.id || null;
       }
     }
 
-    const finalRate = body.rate + (body.rate * body.gst_percentage / 100);
+    const rateNum = Number(validation.data.rate) || 0;
+    const gstNum = Number(validation.data.gst_percentage) || 0;
+    const finalRate = rateNum + (rateNum * gstNum / 100);
+
+    // Format description with HSN code if provided
+    let description = validation.data.description || '';
+    if (validation.data.hsn_code) {
+      const cleanDesc = description ? description.replace(/\|\s*HSN:\s*[\w\d]+/i, '').trim() : '';
+      description = cleanDesc ? `${cleanDesc} | HSN: ${validation.data.hsn_code}` : `HSN: ${validation.data.hsn_code}`;
+    }
+
+    const productPayload: Record<string, unknown> = {
+      business_id: businessId,
+      category_id: validCategoryId,
+      item_name: validation.data.item_name,
+      item_code: validation.data.item_code || null,
+      description: description || null,
+      unit: validation.data.unit,
+      quantity: validation.data.quantity ?? 1,
+      rate: rateNum,
+      gst_percentage: gstNum,
+      final_rate: finalRate,
+      status: validation.data.status || 'active',
+    };
+
+    if (validation.data.minimum_order_quantity !== undefined && validation.data.minimum_order_quantity !== null) {
+      productPayload.minimum_order_quantity = validation.data.minimum_order_quantity;
+    }
+    if (validation.data.effective_date) {
+      productPayload.effective_date = validation.data.effective_date;
+    }
+    if (validation.data.expiry_date) {
+      productPayload.expiry_date = validation.data.expiry_date;
+    }
 
     const { data: product, error } = await supabase
       .from('products')
-      .insert({
-        ...validation.data,
-        business_id: businessId,
-        final_rate: finalRate,
-      })
+      .insert(productPayload)
       .select(`
         *,
         product_categories (
@@ -141,7 +184,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Product creation error:', error);
       return NextResponse.json(
-        { error: { message: 'Failed to create product', details: error.message } },
+        { error: { message: error.message || 'Failed to create product', details: error.message } },
         { status: 500 }
       );
     }
@@ -150,6 +193,7 @@ export async function POST(request: NextRequest) {
       product: {
         ...product,
         category: product.product_categories?.name || 'Uncategorized',
+        hsn_code: validation.data.hsn_code || '',
       },
     }, { status: 201 });
   } catch (error) {

@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ArrowLeft, Plus, Search, Edit2, Trash2, Layers, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { useTranslation } from '@/lib/i18n';
+import { createClient } from '@/lib/supabase/client';
 
 interface Category {
   id: string;
@@ -42,10 +43,25 @@ export default function CategoriesPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
+
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/categories');
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/categories', { headers });
       if (res.ok) {
         const data = await res.json();
         if (data?.categories && data.categories.length > 0) {
@@ -89,11 +105,12 @@ export default function CategoriesPage() {
     setError(null);
 
     try {
+      const headers = await getAuthHeaders();
       if (editingCategory) {
         // Update category
         const res = await fetch(`/api/categories/${editingCategory.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify(formData),
         });
 
@@ -110,7 +127,7 @@ export default function CategoriesPage() {
         // Create category
         const res = await fetch('/api/categories', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify(formData),
         });
 
@@ -149,7 +166,8 @@ export default function CategoriesPage() {
     if (!confirm(confirmMsg)) return;
 
     try {
-      await fetch(`/api/categories/${id}`, { method: 'DELETE' });
+      const headers = await getAuthHeaders();
+      await fetch(`/api/categories/${id}`, { method: 'DELETE', headers });
       setCategories(prev => prev.filter(c => c.id !== id));
       setSuccess(language === 'hi' ? 'श्रेणी हटा दी गई' : 'Category removed');
       setTimeout(() => setSuccess(null), 3000);

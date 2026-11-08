@@ -8,6 +8,7 @@ import { Users, TrendingUp, CreditCard, Package, Plus, Clock, ArrowUpRight, Arro
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useTranslation } from '@/lib/i18n';
+import { createClient } from '@/lib/supabase/client';
 
 interface DashboardStats {
   total_customers: number;
@@ -92,10 +93,25 @@ export default function DashboardPage() {
   const { t, language } = useTranslation();
   const [stats, setStats] = useState<DashboardStats>(defaultStats);
 
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
+
   useEffect(() => {
     async function loadStats() {
       try {
-        const response = await fetch('/api/reports/daily');
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/reports/daily', { headers });
         if (response.ok) {
           const data = await response.json();
           if (data && data.stats) {

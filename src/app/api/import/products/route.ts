@@ -1,5 +1,5 @@
-import { createServerClient } from '@/lib/supabase/client';
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthContext } from '@/lib/auth/server';
 
 interface ProductImport {
   item_name: string;
@@ -18,30 +18,7 @@ interface ProductImport {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
-
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
+    const { supabase, businessId } = await getAuthContext(request);
 
     const body = await request.json();
     const { products, skip_duplicates = false, update_existing = false } = body as {
@@ -57,7 +34,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const businessId = membership.business_id;
     const results: Array<{ id: string; item_name: string; status: string; reason?: string }> = [];
     const errors: Array<{ item_name: string; error: string }> = [];
 
@@ -135,6 +111,11 @@ export async function POST(request: NextRequest) {
 
             const finalRate = (product.rate || 0) + ((product.rate || 0) * (product.gst_percentage || 18) / 100);
 
+            let desc = product.description || '';
+            if (product.hsn_code) {
+              desc = desc ? `${desc} | HSN: ${product.hsn_code}` : `HSN: ${product.hsn_code}`;
+            }
+
             const { data: updated, error: updateError } = await supabase
               .from('products')
               .update({
@@ -145,8 +126,7 @@ export async function POST(request: NextRequest) {
                 rate: product.rate || 0,
                 gst_percentage: product.gst_percentage || 18,
                 final_rate: finalRate,
-                hsn_code: product.hsn_code || null,
-                description: product.description || null,
+                description: desc || null,
                 effective_date: product.effective_date || null,
                 expiry_date: product.expiry_date || null,
                 status: product.status || 'active',
@@ -187,6 +167,11 @@ export async function POST(request: NextRequest) {
 
         const finalRate = (product.rate || 0) + ((product.rate || 0) * (product.gst_percentage || 18) / 100);
 
+        let newDesc = product.description || '';
+        if (product.hsn_code) {
+          newDesc = newDesc ? `${newDesc} | HSN: ${product.hsn_code}` : `HSN: ${product.hsn_code}`;
+        }
+
         // Create new product
         const { data: newProduct, error: createError } = await supabase
           .from('products')
@@ -200,8 +185,7 @@ export async function POST(request: NextRequest) {
             rate: product.rate || 0,
             gst_percentage: product.gst_percentage || 18,
             final_rate: finalRate,
-            hsn_code: product.hsn_code || null,
-            description: product.description || null,
+            description: newDesc || null,
             effective_date: product.effective_date || null,
             expiry_date: product.expiry_date || null,
             status: product.status || 'active',

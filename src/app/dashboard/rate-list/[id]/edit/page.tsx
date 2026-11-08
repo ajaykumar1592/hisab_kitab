@@ -15,6 +15,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Calculator, Tag } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n';
+import { createClient } from '@/lib/supabase/client';
 
 const productSchema = z.object({
   item_name: z.string().min(1, 'Item name is required').max(200),
@@ -58,34 +60,11 @@ const units = [
   'Roll', 'Set', 'Pair', 'Custom'
 ];
 
-const mockCategories: Category[] = [
-  { id: '1', name: 'Building Materials' },
-  { id: '2', name: 'Construction Materials' },
-  { id: '3', name: 'Plumbing' },
-  { id: '4', name: 'Electrical' },
-  { id: '5', name: 'Paint & Hardware' },
-];
-
-const mockProduct: Product = {
-  id: '1',
-  item_name: 'Cement (OPC 53 Grade)',
-  item_code: 'CEM-001',
-  category_id: '1',
-  unit: 'Bag',
-  quantity: 1,
-  rate: 350,
-  gst_percentage: 28,
-  final_rate: 448,
-  status: 'active',
-  description: 'High quality OPC 53 grade cement for construction',
-  hsn_code: '2523',
-  created_at: '2024-01-10',
-};
-
 export default function EditProductPage() {
   const params = useParams();
   const router = useRouter();
   const productId = params.id as string;
+  const { t, isHindi } = useTranslation();
 
   const [product, setProduct] = useState<Product | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -100,6 +79,7 @@ export default function EditProductPage() {
     watch,
     setValue,
     reset,
+    setFocus,
     formState: { errors },
   } = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
@@ -111,10 +91,23 @@ export default function EditProductPage() {
     },
   });
 
-  const rate = watch('rate');
-  const gstPercentage = watch('gst_percentage');
-  const quantity = watch('quantity');
+  const rate = watch('rate') || 0;
+  const gstPercentage = watch('gst_percentage') || 0;
   const finalRate = rate + (rate * gstPercentage / 100);
+
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
 
   useEffect(() => {
     fetchData();
@@ -123,43 +116,47 @@ export default function EditProductPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      let p = mockProduct;
-      let cats = mockCategories;
+      setError(null);
+      const headers = await getAuthHeaders();
 
-      try {
-        const [prodRes, catRes] = await Promise.all([
-          fetch(`/api/products/${productId}`),
-          fetch('/api/categories'),
-        ]);
+      const [prodRes, catRes] = await Promise.all([
+        fetch(`/api/products/${productId}`, { headers }),
+        fetch('/api/categories', { headers }),
+      ]);
 
-        if (prodRes.ok) {
-          const prodResult = await prodRes.json();
-          if (prodResult.product) p = prodResult.product;
-        }
+      if (!prodRes.ok) {
+        const errResult = await prodRes.json();
+        throw new Error(errResult.error?.message || 'Failed to fetch product');
+      }
 
-        if (catRes.ok) {
-          const catResult = await catRes.json();
-          if (catResult.categories && catResult.categories.length > 0) {
-            cats = catResult.categories;
-          }
-        }
-      } catch (e) {
-        // use mock
+      const prodResult = await prodRes.json();
+      const p = prodResult.product;
+
+      let cats: Category[] = [];
+      if (catRes.ok) {
+        const catResult = await catRes.json();
+        cats = catResult.categories || [];
+        setCategories(cats);
       }
 
       setProduct(p);
-      setCategories(cats);
+
+      // Clean up description if HSN is inside it
+      let cleanDesc = p.description || '';
+      if (cleanDesc.includes('HSN:')) {
+        cleanDesc = cleanDesc.replace(/\|\s*HSN:\s*[\w\d]+/i, '').replace(/^HSN:\s*[\w\d]+\s*/i, '').trim();
+      }
 
       reset({
-        item_name: p.item_name,
+        item_name: p.item_name || '',
         item_code: p.item_code || '',
-        category_id: p.category_id || '1',
-        unit: p.unit,
-        quantity: p.quantity,
-        rate: p.rate,
-        gst_percentage: p.gst_percentage,
-        status: p.status,
-        description: p.description || '',
+        category_id: p.category_id || (cats.length > 0 ? cats[0].id : ''),
+        unit: p.unit || 'Piece',
+        quantity: p.quantity ?? 1,
+        rate: p.rate ?? 0,
+        gst_percentage: p.gst_percentage ?? 18,
+        status: p.status || 'active',
+        description: cleanDesc,
         hsn_code: p.hsn_code || '',
       });
     } catch (err) {
@@ -169,15 +166,24 @@ export default function EditProductPage() {
     }
   };
 
+  const onInvalid = () => {
+    setError(isHindi ? 'कृपया सभी आवश्यक फ़ील्ड भरें और त्रुटियों को ठीक करें।' : 'Please check all required fields and fix validation errors before submitting.');
+    const errorKeys = Object.keys(errors);
+    if (errorKeys.length > 0) {
+      setFocus(errorKeys[0] as any);
+    }
+  };
+
   const onSubmit = async (data: ProductForm) => {
     setError(null);
     setSuccess(null);
     setIsSubmitting(true);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch(`/api/products/${productId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...data,
           rate: Number(data.rate),
@@ -192,14 +198,24 @@ export default function EditProductPage() {
       const result = await response.json();
 
       if (!response.ok) {
+        if (result.error?.details) {
+          const detailMsg = typeof result.error.details === 'string'
+            ? result.error.details
+            : typeof result.error.details === 'object' && result.error.details !== null
+            ? Object.entries(result.error.details)
+                .map(([field, msg]: any) => `${field}: ${Array.isArray(msg) ? msg.join(', ') : msg}`)
+                .join(', ')
+            : JSON.stringify(result.error.details);
+          throw new Error(detailMsg || result.error?.message || 'Failed to update product');
+        }
         throw new Error(result.error?.message || 'Failed to update product');
       }
 
-      setSuccess('Product updated successfully!');
+      setSuccess(isHindi ? 'उत्पाद विवरण एवं रेट सफलतापूर्वक अपडेट कर दिया गया है!' : 'Product updated successfully!');
       setTimeout(() => {
         router.push('/dashboard/rate-list');
         router.refresh();
-      }, 1500);
+      }, 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update product');
     } finally {
@@ -217,7 +233,7 @@ export default function EditProductPage() {
             </Link>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Edit Product</h1>
+            <h1 className="text-2xl font-bold text-gray-900">{t('editProductTitle', 'Edit Product')}</h1>
           </div>
         </div>
         <div className="flex items-center justify-center h-64">
@@ -231,10 +247,10 @@ export default function EditProductPage() {
     return (
       <div className="max-w-3xl mx-auto text-center py-12">
         <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-        <h2 className="text-xl font-semibold text-gray-900">Unable to load product</h2>
+        <h2 className="text-xl font-semibold text-gray-900">{isHindi ? 'उत्पाद लोड नहीं हो सका' : 'Unable to load product'}</h2>
         <p className="text-gray-500 mt-2">{error}</p>
         <Button asChild variant="outline" className="mt-4">
-          <Link href="/dashboard/rate-list">Back to Rate List</Link>
+          <Link href="/dashboard/rate-list">{isHindi ? 'वापस रेट लिस्ट पर जाएं' : 'Back to Rate List'}</Link>
         </Button>
       </div>
     );
@@ -250,8 +266,8 @@ export default function EditProductPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Edit Product</h1>
-          <p className="text-gray-500">Update product information</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('editProductTitle', 'Edit Product')}</h1>
+          <p className="text-gray-500">{t('editProductSubtitle', 'Update product information and pricing')}</p>
         </div>
       </div>
 
@@ -271,20 +287,23 @@ export default function EditProductPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Product Information</CardTitle>
-          <CardDescription>Update the product details</CardDescription>
+          <CardTitle>{t('productInformation', 'Product Information')}</CardTitle>
+          <CardDescription>
+            {isHindi ? 'उत्पाद का नाम, श्रेणी एवं बुनियादी जानकारी अपडेट करें' : 'Update the product details'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
             {/* Item Name & Code */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="item_name" className="flex items-center gap-1">
-                  Item Name <span className="text-red-500">*</span>
+                  {t('itemName', 'Item Name')} <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="item_name"
-                  placeholder="e.g., Cement OPC 53 Grade"
+                  placeholder={isHindi ? 'सामग्री का नाम' : 'Product name'}
+                  className={errors.item_name ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   {...register('item_name')}
                   disabled={isSubmitting}
                 />
@@ -294,10 +313,11 @@ export default function EditProductPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="item_code">Item Code</Label>
+                <Label htmlFor="item_code">{t('itemCode', 'Item Code')}</Label>
                 <Input
                   id="item_code"
-                  placeholder="Auto-generated from name"
+                  placeholder={isHindi ? 'सामग्री कोड' : 'Item code'}
+                  className={errors.item_code ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   {...register('item_code')}
                   disabled={isSubmitting}
                 />
@@ -311,14 +331,14 @@ export default function EditProductPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="category_id" className="flex items-center gap-1">
-                  Category <span className="text-red-500">*</span>
+                  {t('category', 'Category')} <span className="text-red-500">*</span>
                 </Label>
                 <Select
                   value={watch('category_id')}
                   onValueChange={(value) => setValue('category_id', value)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
+                    <SelectValue placeholder={isHindi ? 'श्रेणी चुनें' : 'Select category'} />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((category) => (
@@ -326,11 +346,6 @@ export default function EditProductPage() {
                         {category.name}
                       </SelectItem>
                     ))}
-                    {categories.length === 0 && (
-                      <div className="px-2 py-3 text-center text-gray-500">
-                        No categories found. <Link href="/dashboard/settings/categories" className="text-blue-600 underline">Add one</Link>
-                      </div>
-                    )}
                   </SelectContent>
                 </Select>
                 {errors.category_id && (
@@ -340,18 +355,18 @@ export default function EditProductPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="unit" className="flex items-center gap-1">
-                  Unit <span className="text-red-500">*</span>
+                  {t('unit', 'Unit')} <span className="text-red-500">*</span>
                 </Label>
                 <Select
                   value={watch('unit')}
                   onValueChange={(value) => setValue('unit', value)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select unit" />
+                    <SelectValue placeholder={isHindi ? 'इकाई चुनें' : 'Select unit'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {units.map((unit) => (
-                      <SelectItem key={unit} value={unit}>{unit}</SelectItem>
+                    {units.map((u) => (
+                      <SelectItem key={u} value={u}>{u}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -363,10 +378,10 @@ export default function EditProductPage() {
 
             {/* HSN Code */}
             <div className="space-y-2">
-              <Label htmlFor="hsn_code">HSN Code</Label>
+              <Label htmlFor="hsn_code">{t('hsnCode', 'HSN / SAC Code')}</Label>
               <Input
                 id="hsn_code"
-                placeholder="e.g., 2523, 7214"
+                placeholder={isHindi ? 'उदा. 2523, 7214' : 'e.g., 2523, 7214'}
                 {...register('hsn_code')}
                 disabled={isSubmitting}
               />
@@ -380,13 +395,13 @@ export default function EditProductPage() {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Tag className="h-5 w-5 text-blue-600" />
-                Pricing
+                {t('pricingAndTax', 'Pricing & Tax')}
               </h3>
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="quantity" className="flex items-center gap-1">
-                    Default Qty <span className="text-red-500">*</span>
+                    {t('quantity', 'Default Qty')} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="quantity"
@@ -404,7 +419,7 @@ export default function EditProductPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="rate" className="flex items-center gap-1">
-                    Base Rate <span className="text-red-500">*</span>
+                    {t('baseRate', 'Base Rate')} (₹) <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="rate"
@@ -422,7 +437,7 @@ export default function EditProductPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="gst_percentage" className="flex items-center gap-1">
-                    GST % <span className="text-red-500">*</span>
+                    {t('gstRate', 'GST %')} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="gst_percentage"
@@ -441,14 +456,16 @@ export default function EditProductPage() {
               </div>
 
               {/* Final Rate Display */}
-              <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Calculator className="h-5 w-5 text-gray-500" />
-                  <span className="text-gray-600">Final Rate (incl. GST):</span>
+                  <Calculator className="h-5 w-5 text-blue-600" />
+                  <span className="text-blue-900 font-medium">
+                    {t('finalRate', 'Final Rate')} ({isHindi ? 'जीएसटी सहित कुल' : 'incl. GST'}):
+                  </span>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-bold text-blue-600">{formatCurrency(finalRate)}</p>
-                  <p className="text-xs text-gray-500">per {watch('unit') || 'unit'}</p>
+                  <p className="text-2xl font-bold text-blue-700">{formatCurrency(finalRate)}</p>
+                  <p className="text-xs text-blue-600">/ {watch('unit') || 'unit'}</p>
                 </div>
               </div>
             </div>
@@ -457,7 +474,7 @@ export default function EditProductPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="status" className="flex items-center gap-1">
-                  Status <span className="text-red-500">*</span>
+                  {t('status', 'Status')} <span className="text-red-500">*</span>
                 </Label>
                 <Select
                   value={watch('status')}
@@ -467,18 +484,18 @@ export default function EditProductPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="active">{t('active', 'Active')}</SelectItem>
+                    <SelectItem value="inactive">{t('inactive', 'Inactive')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{t('description', 'Description')}</Label>
               <Textarea
                 id="description"
-                placeholder="Product description, specifications, etc."
+                placeholder={isHindi ? 'उत्पाद का विवरण...' : 'Product description, specifications, etc.'}
                 rows={3}
                 {...register('description')}
                 disabled={isSubmitting}
@@ -489,18 +506,18 @@ export default function EditProductPage() {
             </div>
 
             {/* Submit Buttons */}
-            <CardFooter className="flex flex-col sm:flex-row gap-4 border-t pt-6">
+            <CardFooter className="flex flex-col sm:flex-row gap-4 border-t pt-6 px-0">
               <Button type="button" variant="outline" asChild>
-                <Link href="/dashboard/rate-list">Cancel</Link>
+                <Link href="/dashboard/rate-list">{t('cancel', 'Cancel')}</Link>
               </Button>
               <Button type="submit" className="ml-auto" disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Updating...
+                    {t('savingChanges', 'Saving Changes...')}
                   </>
                 ) : (
-                  'Update Product'
+                  t('updateCustomer', 'Save Changes')
                 )}
               </Button>
             </CardFooter>

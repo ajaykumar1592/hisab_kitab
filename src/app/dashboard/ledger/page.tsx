@@ -13,6 +13,7 @@ import { Plus, Search, Filter, Calendar, Download, CreditCard, Trash2, Edit, Eye
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { format, subDays, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 
 interface Transaction {
   id: string;
@@ -96,10 +97,25 @@ export default function LedgerPage() {
     },
   ];
 
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
+
   useEffect(() => {
     async function loadTransactions() {
       try {
-        const response = await fetch('/api/transactions');
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/transactions', { headers });
         if (response.ok) {
           const data = await response.json();
           if (data?.transactions && data.transactions.length > 0) {

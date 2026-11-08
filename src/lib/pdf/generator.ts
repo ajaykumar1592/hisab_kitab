@@ -114,6 +114,18 @@ function numberToWords(num: number): string {
   return result.trim() + ' Rupees Only';
 }
 
+function safeText(str?: string | null): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/₹/g, 'Rs. ')
+    .replace(/[^\x00-\x7F]/g, ' ')
+    .trim();
+}
+
+function safeFormatCurrency(amount: number): string {
+  return 'Rs. ' + (amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function drawTable(
   page: any,
   headers: string[],
@@ -140,7 +152,7 @@ function drawTable(
   });
 
   headers.forEach((header, i) => {
-    page.drawText(header, {
+    page.drawText(safeText(header), {
       x: x + 2,
       y: y - rowHeight + 4,
       size: fontSize,
@@ -166,7 +178,7 @@ function drawTable(
     }
 
     row.forEach((cell, i) => {
-      page.drawText(cell, {
+      page.drawText(safeText(cell), {
         x: x + 2,
         y: y - rowHeight + 4,
         size: fontSize,
@@ -524,7 +536,7 @@ export async function generateRateListPDF(
   };
 
   // Company Header
-  page.drawText(data.companyInfo.name, {
+  page.drawText(safeText(data.companyInfo.name || 'Hisab Kitab'), {
     x: margin,
     y,
     size: 18,
@@ -533,14 +545,19 @@ export async function generateRateListPDF(
   });
 
   y -= 20;
-  page.drawText(data.companyInfo.address, { x: margin, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
-  y -= 10;
-  page.drawText(`GSTIN: ${data.companyInfo.gstin}`, { x: margin, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
+  if (data.companyInfo.address) {
+    page.drawText(safeText(data.companyInfo.address), { x: margin, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
+    y -= 10;
+  }
+  if (data.companyInfo.gstin) {
+    page.drawText(safeText(`GSTIN: ${data.companyInfo.gstin}`), { x: margin, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
+    y -= 10;
+  }
 
-  y -= 20;
+  y -= 10;
 
   // Report Title
-  page.drawText(data.reportTitle, {
+  page.drawText(safeText(data.reportTitle || 'Rate List'), {
     x: margin,
     y,
     size: 14,
@@ -549,7 +566,7 @@ export async function generateRateListPDF(
   });
 
   y -= 15;
-  page.drawText(`Generated on: ${formatDate(data.generatedDate)}`, {
+  page.drawText(safeText(`Generated on: ${formatDate(data.generatedDate)}`), {
     x: margin,
     y,
     size: 8,
@@ -572,7 +589,7 @@ export async function generateRateListPDF(
       color: rgb(0.9, 0.92, 0.98),
     });
 
-    page.drawText(`${categoryGroup.category} (${categoryGroup.items.length} items)`, {
+    page.drawText(safeText(`${categoryGroup.category} (${categoryGroup.items.length} items)`), {
       x: margin + 5,
       y: y - 14,
       size: 10,
@@ -587,14 +604,14 @@ export async function generateRateListPDF(
     const colWidths = [140, 50, 40, 35, 55, 35, 60, 45];
 
     const rows = categoryGroup.items.map(item => [
-      item.itemName.length > 30 ? item.itemName.substring(0, 30) + '...' : item.itemName,
-      item.itemCode,
-      item.unit,
-      item.quantity.toString(),
-      formatCurrency(item.rate),
+      safeText(item.itemName.length > 30 ? item.itemName.substring(0, 30) + '...' : item.itemName),
+      safeText(item.itemCode || '-'),
+      safeText(item.unit || 'Piece'),
+      safeText(item.quantity?.toString() || '1'),
+      safeFormatCurrency(item.rate),
       `${item.gstPercentage}%`,
-      formatCurrency(item.finalRate),
-      item.hsnCode || '-',
+      safeFormatCurrency(item.finalRate),
+      safeText(item.hsnCode || '-'),
     ]);
 
     y = drawTable(page, headers, rows, margin, y, colWidths, font, 7, 16);

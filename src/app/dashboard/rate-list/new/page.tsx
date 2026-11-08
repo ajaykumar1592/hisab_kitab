@@ -15,6 +15,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Calculator, Tag } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { useTranslation } from '@/lib/i18n';
+import { createClient } from '@/lib/supabase/client';
 
 const productSchema = z.object({
   item_name: z.string().min(1, 'Item name is required').max(200),
@@ -42,16 +44,9 @@ const units = [
   'Roll', 'Set', 'Pair', 'Custom'
 ];
 
-const mockCategories: Category[] = [
-  { id: '1', name: 'Building Materials' },
-  { id: '2', name: 'Construction Materials' },
-  { id: '3', name: 'Plumbing' },
-  { id: '4', name: 'Electrical' },
-  { id: '5', name: 'Paint & Hardware' },
-];
-
 export default function NewProductPage() {
   const router = useRouter();
+  const { t, isHindi } = useTranslation();
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
@@ -73,21 +68,35 @@ export default function NewProductPage() {
       rate: 0,
       gst_percentage: 18,
       status: 'active',
+      unit: 'Piece',
     },
   });
 
   const onInvalid = () => {
-    setError('Please check all required fields and fix validation errors before submitting.');
+    setError(isHindi ? 'कृपया सभी आवश्यक फ़ील्ड भरें और त्रुटियों को ठीक करें।' : 'Please check all required fields and fix validation errors before submitting.');
     const errorKeys = Object.keys(errors);
     if (errorKeys.length > 0) {
       setFocus(errorKeys[0] as any);
     }
   };
 
-  const rate = watch('rate');
-  const gstPercentage = watch('gst_percentage');
-  const quantity = watch('quantity');
+  const rate = watch('rate') || 0;
+  const gstPercentage = watch('gst_percentage') || 0;
   const finalRate = rate + (rate * gstPercentage / 100);
+
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
 
   // Fetch categories on load
   useEffect(() => {
@@ -97,7 +106,8 @@ export default function NewProductPage() {
   const fetchCategories = async () => {
     try {
       setLoadingCategories(true);
-      const response = await fetch('/api/categories');
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/categories', { headers });
       if (response.ok) {
         const result = await response.json();
         if (result.categories && result.categories.length > 0) {
@@ -105,8 +115,6 @@ export default function NewProductPage() {
           if (!watch('category_id')) {
             setValue('category_id', result.categories[0].id);
           }
-          setLoadingCategories(false);
-          return;
         }
       }
     } catch (err) {
@@ -124,9 +132,11 @@ export default function NewProductPage() {
         .toUpperCase()
         .replace(/[^A-Z0-9]/g, '')
         .substring(0, 8);
-      setValue('item_code', `${code}-${Date.now().toString().slice(-4)}`);
+      if (code) {
+        setValue('item_code', `${code}-${Date.now().toString().slice(-4)}`);
+      }
     }
-  }, [itemName, setValue]);
+  }, [itemName, setValue, watch]);
 
   const onSubmit = async (data: ProductForm) => {
     setError(null);
@@ -134,9 +144,10 @@ export default function NewProductPage() {
     setIsSubmitting(true);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/products', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...data,
           rate: Number(data.rate),
@@ -152,19 +163,23 @@ export default function NewProductPage() {
 
       if (!response.ok) {
         if (result.error?.details) {
-          const detailMsg = Object.entries(result.error.details)
-            .map(([field, msg]: any) => `${field}: ${msg}`)
-            .join(', ');
-          throw new Error(`Validation failed: ${detailMsg}`);
+          const detailMsg = typeof result.error.details === 'string'
+            ? result.error.details
+            : typeof result.error.details === 'object' && result.error.details !== null
+            ? Object.entries(result.error.details)
+                .map(([field, msg]: any) => `${field}: ${Array.isArray(msg) ? msg.join(', ') : msg}`)
+                .join(', ')
+            : JSON.stringify(result.error.details);
+          throw new Error(detailMsg || result.error?.message || 'Failed to create product');
         }
         throw new Error(result.error?.message || 'Failed to create product');
       }
 
-      setSuccess('Product created successfully!');
+      setSuccess(isHindi ? 'उत्पाद सफलतापूर्वक जोड़ दिया गया है!' : 'Product created successfully!');
       setTimeout(() => {
         router.push('/dashboard/rate-list');
         router.refresh();
-      }, 1500);
+      }, 1000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create product');
     } finally {
@@ -182,8 +197,8 @@ export default function NewProductPage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Add New Item</h1>
-          <p className="text-gray-500">Create a new product in your rate list</p>
+          <h1 className="text-2xl font-bold text-gray-900">{t('addNewItem', 'Add New Item')}</h1>
+          <p className="text-gray-500">{t('createProductSubtitle', 'Create a new product in your rate list')}</p>
         </div>
       </div>
 
@@ -203,8 +218,10 @@ export default function NewProductPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Product Information</CardTitle>
-          <CardDescription>Enter the product details</CardDescription>
+          <CardTitle>{t('productInformation', 'Product Information')}</CardTitle>
+          <CardDescription>
+            {isHindi ? 'उत्पाद का नाम, श्रेणी एवं बुनियादी जानकारी दर्ज करें' : 'Enter the product details'}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
@@ -212,11 +229,11 @@ export default function NewProductPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="item_name" className="flex items-center gap-1">
-                  Item Name <span className="text-red-500">*</span>
+                  {t('itemName', 'Item Name')} <span className="text-red-500">*</span>
                 </Label>
                 <Input
                   id="item_name"
-                  placeholder="e.g., Cement OPC 53 Grade"
+                  placeholder={isHindi ? 'उदा. अल्ट्राटेक सीमेंट या सरिया 12mm' : 'e.g., Cement OPC 53 Grade'}
                   className={errors.item_name ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   {...register('item_name')}
                   disabled={isSubmitting}
@@ -227,10 +244,10 @@ export default function NewProductPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="item_code">Item Code</Label>
+                <Label htmlFor="item_code">{t('itemCode', 'Item Code')}</Label>
                 <Input
                   id="item_code"
-                  placeholder="Auto-generated from name"
+                  placeholder={isHindi ? 'स्वचालित कोड (वैकल्पिक)' : 'Auto-generated or custom code'}
                   className={errors.item_code ? 'border-red-500 focus-visible:ring-red-500' : ''}
                   {...register('item_code')}
                   disabled={isSubmitting}
@@ -245,20 +262,20 @@ export default function NewProductPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="category_id" className="flex items-center gap-1">
-                  Category <span className="text-red-500">*</span>
+                  {t('category', 'Category')} <span className="text-red-500">*</span>
                 </Label>
                 {loadingCategories ? (
                   <div className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                    <span className="text-sm text-gray-500">Loading categories...</span>
+                    <span className="text-sm text-gray-500">{isHindi ? 'श्रेणियाँ लोड हो रही हैं...' : 'Loading categories...'}</span>
                   </div>
                 ) : (
                   <Select
                     value={watch('category_id')}
                     onValueChange={(value) => setValue('category_id', value)}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
+                    <SelectTrigger className={errors.category_id ? 'border-red-500' : ''}>
+                      <SelectValue placeholder={isHindi ? 'श्रेणी चुनें' : 'Select category'} />
                     </SelectTrigger>
                     <SelectContent>
                       {categories.map((category) => (
@@ -268,7 +285,10 @@ export default function NewProductPage() {
                       ))}
                       {categories.length === 0 && (
                         <div className="px-2 py-3 text-center text-gray-500">
-                          No categories found. <Link href="/dashboard/settings/categories" className="text-blue-600 underline">Add one</Link>
+                          {isHindi ? 'कोई श्रेणी नहीं मिली।' : 'No categories found.'}{' '}
+                          <Link href="/dashboard/settings/categories" className="text-blue-600 underline">
+                            {isHindi ? 'श्रेणी बनाएं' : 'Add one'}
+                          </Link>
                         </div>
                       )}
                     </SelectContent>
@@ -281,18 +301,18 @@ export default function NewProductPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="unit" className="flex items-center gap-1">
-                  Unit <span className="text-red-500">*</span>
+                  {t('unit', 'Unit')} <span className="text-red-500">*</span>
                 </Label>
                 <Select
                   value={watch('unit')}
                   onValueChange={(value) => setValue('unit', value)}
                 >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select unit" />
+                  <SelectTrigger className={errors.unit ? 'border-red-500' : ''}>
+                    <SelectValue placeholder={isHindi ? 'इकाई चुनें' : 'Select unit'} />
                   </SelectTrigger>
                   <SelectContent>
-                    {units.map((unit) => (
-                      <SelectItem key={unit} value={unit}>{unit}</SelectItem>
+                    {units.map((u) => (
+                      <SelectItem key={u} value={u}>{u}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -304,10 +324,11 @@ export default function NewProductPage() {
 
             {/* HSN Code */}
             <div className="space-y-2">
-              <Label htmlFor="hsn_code">HSN Code</Label>
+              <Label htmlFor="hsn_code">{t('hsnCode', 'HSN / SAC Code')}</Label>
               <Input
                 id="hsn_code"
-                placeholder="e.g., 2523, 7214"
+                placeholder={isHindi ? 'उदा. 2523, 7214' : 'e.g., 2523, 7214'}
+                className={errors.hsn_code ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('hsn_code')}
                 disabled={isSubmitting}
               />
@@ -321,13 +342,13 @@ export default function NewProductPage() {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold flex items-center gap-2">
                 <Tag className="h-5 w-5 text-blue-600" />
-                Pricing
+                {t('pricingAndTax', 'Pricing & Tax')}
               </h3>
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="quantity" className="flex items-center gap-1">
-                    Default Qty <span className="text-red-500">*</span>
+                    {t('quantity', 'Default Qty')} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="quantity"
@@ -335,6 +356,7 @@ export default function NewProductPage() {
                     step="1"
                     min="1"
                     placeholder="1"
+                    className={errors.quantity ? 'border-red-500 focus-visible:ring-red-500' : ''}
                     {...register('quantity', { valueAsNumber: true })}
                     disabled={isSubmitting}
                   />
@@ -345,7 +367,7 @@ export default function NewProductPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="rate" className="flex items-center gap-1">
-                    Base Rate <span className="text-red-500">*</span>
+                    {t('baseRate', 'Base Rate')} (₹) <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="rate"
@@ -353,6 +375,7 @@ export default function NewProductPage() {
                     step="0.01"
                     min="0"
                     placeholder="0.00"
+                    className={errors.rate ? 'border-red-500 focus-visible:ring-red-500' : ''}
                     {...register('rate', { valueAsNumber: true })}
                     disabled={isSubmitting}
                   />
@@ -363,7 +386,7 @@ export default function NewProductPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="gst_percentage" className="flex items-center gap-1">
-                    GST % <span className="text-red-500">*</span>
+                    {t('gstRate', 'GST %')} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="gst_percentage"
@@ -372,6 +395,7 @@ export default function NewProductPage() {
                     min="0"
                     max="100"
                     placeholder="18"
+                    className={errors.gst_percentage ? 'border-red-500 focus-visible:ring-red-500' : ''}
                     {...register('gst_percentage', { valueAsNumber: true })}
                     disabled={isSubmitting}
                   />
@@ -382,14 +406,16 @@ export default function NewProductPage() {
               </div>
 
               {/* Final Rate Display */}
-              <div className="bg-gray-50 rounded-lg p-4 flex items-center justify-between">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Calculator className="h-5 w-5 text-gray-500" />
-                  <span className="text-gray-600">Final Rate (incl. GST):</span>
+                  <Calculator className="h-5 w-5 text-blue-600" />
+                  <span className="text-blue-900 font-medium">
+                    {t('finalRate', 'Final Rate')} ({isHindi ? 'जीएसटी सहित कुल' : 'incl. GST'}):
+                  </span>
                 </div>
                 <div className="text-right">
-                  <p className="text-xl font-bold text-blue-600">{formatCurrency(finalRate)}</p>
-                  <p className="text-xs text-gray-500">per {watch('unit') || 'unit'}</p>
+                  <p className="text-2xl font-bold text-blue-700">{formatCurrency(finalRate)}</p>
+                  <p className="text-xs text-blue-600">/ {watch('unit') || 'unit'}</p>
                 </div>
               </div>
             </div>
@@ -398,7 +424,7 @@ export default function NewProductPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="status" className="flex items-center gap-1">
-                  Status <span className="text-red-500">*</span>
+                  {t('status', 'Status')} <span className="text-red-500">*</span>
                 </Label>
                 <Select
                   value={watch('status')}
@@ -408,19 +434,20 @@ export default function NewProductPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="inactive">Inactive</SelectItem>
+                    <SelectItem value="active">{t('active', 'Active')}</SelectItem>
+                    <SelectItem value="inactive">{t('inactive', 'Inactive')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
+              <Label htmlFor="description">{t('description', 'Description')}</Label>
               <Textarea
                 id="description"
-                placeholder="Product description, specifications, etc."
+                placeholder={isHindi ? 'उत्पाद का विवरण या गुणवत्ता की जानकारी...' : 'Product description, specifications, etc.'}
                 rows={3}
+                className={errors.description ? 'border-red-500 focus-visible:ring-red-500' : ''}
                 {...register('description')}
                 disabled={isSubmitting}
               />
@@ -430,18 +457,18 @@ export default function NewProductPage() {
             </div>
 
             {/* Submit Buttons */}
-            <CardFooter className="flex flex-col sm:flex-row gap-4 border-t pt-6">
+            <CardFooter className="flex flex-col sm:flex-row gap-4 border-t pt-6 px-0">
               <Button type="button" variant="outline" asChild>
-                <Link href="/dashboard/rate-list">Cancel</Link>
+                <Link href="/dashboard/rate-list">{t('cancel', 'Cancel')}</Link>
               </Button>
               <Button type="submit" className="ml-auto" disabled={isSubmitting || loadingCategories}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
+                    {t('creatingProduct', 'Creating Product...')}
                   </>
                 ) : (
-                  'Create Product'
+                  t('addProduct', 'Add Product / Item')
                 )}
               </Button>
             </CardFooter>

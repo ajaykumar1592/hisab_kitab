@@ -1,32 +1,9 @@
-import { createServerClient } from '@/lib/supabase/client';
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthContext } from '@/lib/auth/server';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient();
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: { message: 'Unauthorized' } },
-        { status: 401 }
-      );
-    }
-
-    // Get user's business
-    const { data: membership } = await supabase
-      .from('business_members')
-      .select('business_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!membership) {
-      return NextResponse.json(
-        { error: { message: 'No business found' } },
-        { status: 404 }
-      );
-    }
+    const { supabase, businessId } = await getAuthContext(request);
 
     // Parse query parameters
     const { searchParams } = new URL(request.url);
@@ -43,8 +20,7 @@ export async function GET(request: NextRequest) {
           name
         )
       `)
-      .eq('business_id', membership.business_id)
-      .is('deleted_at', null)
+      .eq('business_id', businessId)
       .order('item_name', { ascending: true });
 
     if (categoryId) {
@@ -65,20 +41,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const exportData = (products || []).map(p => ({
-      item_name: p.item_name,
-      item_code: p.item_code || '',
-      category: p.product_categories?.name || 'Uncategorized',
-      unit: p.unit,
-      quantity: p.quantity,
-      rate: p.rate,
-      gst_percentage: p.gst_percentage,
-      final_rate: p.final_rate,
-      hsn_code: p.hsn_code || '',
-      description: p.description || '',
-      status: p.status,
-      created_at: p.created_at,
-    }));
+    const exportData = (products || []).map(p => {
+      let hsn = (p as any).hsn_code || '';
+      if (!hsn && p.description) {
+        const match = p.description.match(/HSN:\s*([A-Za-z0-9]+)/i);
+        if (match) hsn = match[1];
+      }
+      return {
+        item_name: p.item_name,
+        item_code: p.item_code || '',
+        category: p.product_categories?.name || 'Uncategorized',
+        unit: p.unit,
+        quantity: p.quantity,
+        rate: p.rate,
+        gst_percentage: p.gst_percentage,
+        final_rate: p.final_rate,
+        hsn_code: hsn,
+        description: p.description || '',
+        status: p.status,
+        created_at: p.created_at,
+      };
+    });
 
     if (format === 'json') {
       return NextResponse.json(

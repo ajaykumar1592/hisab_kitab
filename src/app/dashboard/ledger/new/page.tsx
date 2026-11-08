@@ -15,6 +15,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Separator } from '@/components/ui/separator';
 import { ArrowLeft, Loader2, AlertCircle, CheckCircle2, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 
 const transactionSchema = z.object({
   customer_id: z.string().min(1, 'Please select a customer'),
@@ -64,6 +65,20 @@ export default function NewTransactionPage() {
   const transactionType = watch('transaction_type');
   const amount = watch('amount');
 
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
+
   // Fetch customers on load
   useEffect(() => {
     fetchCustomers();
@@ -80,7 +95,8 @@ export default function NewTransactionPage() {
   const fetchCustomers = async () => {
     try {
       setLoadingCustomers(true);
-      const response = await fetch('/api/customers?status=active&limit=100');
+      const headers = await getAuthHeaders();
+      const response = await fetch('/api/customers?status=active&limit=100', { headers });
       if (response.ok) {
         const result = await response.json();
         if (result.customers && result.customers.length > 0) {
@@ -109,9 +125,10 @@ export default function NewTransactionPage() {
     setIsSubmitting(true);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/transactions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           ...data,
           amount: Number(data.amount),

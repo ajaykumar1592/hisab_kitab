@@ -12,6 +12,7 @@ import { Plus, Search, Filter, MoreVertical, Edit, Eye, Trash2, Phone, MessageSq
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useTranslation } from '@/lib/i18n';
+import { createClient } from '@/lib/supabase/client';
 
 interface Customer {
   id: string;
@@ -78,10 +79,25 @@ export default function CustomersPage() {
     },
   ];
 
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
+
   useEffect(() => {
     async function loadCustomers() {
       try {
-        const response = await fetch('/api/customers');
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/customers', { headers });
         if (response.ok) {
           const data = await response.json();
           if (data?.customers && data.customers.length > 0) {

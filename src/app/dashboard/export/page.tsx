@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Download, Loader2, CheckCircle2, FileDown, Users, CreditCard, Receipt, Package, Settings2 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 
 const exportTypes = [
   { value: 'all', label: 'Complete Backup', description: 'All data including customers, transactions, receipts, products, and settings' },
@@ -27,17 +28,30 @@ export default function ExportDataPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.warn('Could not read session token', e);
+    }
+    return headers;
+  };
+
   const handleExport = async () => {
     setIsExporting(true);
     setError(null);
     setSuccess(null);
 
     try {
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/export/data', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ type: exportType }),
       });
 
