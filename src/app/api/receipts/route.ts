@@ -248,3 +248,65 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const supabase = createServerClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: { message: 'Unauthorized' } },
+        { status: 401 }
+      );
+    }
+
+    const { data: membership } = await supabase
+      .from('business_members')
+      .select('business_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (!membership) {
+      return NextResponse.json(
+        { error: { message: 'No business found' } },
+        { status: 404 }
+      );
+    }
+
+    const url = new URL(request.url);
+    const receiptId = url.pathname.split('/').pop();
+
+    if (!receiptId) {
+      return NextResponse.json(
+        { error: { message: 'Receipt ID is required' } },
+        { status: 400 }
+      );
+    }
+
+    const { data: receipt, error } = await supabase
+      .from('payment_receipts')
+      .delete()
+      .eq('id', receiptId)
+      .eq('business_id', membership.business_id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Receipt delete error:', error);
+      return NextResponse.json(
+        { error: { message: 'Failed to delete receipt', details: error.message } },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, message: 'Receipt deleted successfully', receipt });
+  } catch (error) {
+    console.error('Receipt DELETE error:', error);
+    return NextResponse.json(
+      { error: { message: 'Internal server error' } },
+      { status: 500 }
+    );
+  }
+}

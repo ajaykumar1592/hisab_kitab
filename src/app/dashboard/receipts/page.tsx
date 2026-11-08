@@ -5,12 +5,12 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Search, Filter, Download, Eye, Printer, Calendar, MoreVertical, Loader2 } from 'lucide-react';
+import { Plus, Search, Eye, Printer, Calendar, Trash2, Loader2 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 
 interface PaymentReceipt {
   id: string;
@@ -18,6 +18,7 @@ interface PaymentReceipt {
   receipt_date: string;
   customer_name: string;
   customer_mobile: string;
+  customer_id?: string;
   amount: number;
   payment_method: string;
   reference_number: string;
@@ -26,60 +27,19 @@ interface PaymentReceipt {
   created_at: string;
 }
 
-const mockReceipts: PaymentReceipt[] = [
-  {
-    id: '1',
-    receipt_number: 'RCP-2024-001',
-    receipt_date: '2024-01-15',
-    customer_name: 'Rajesh Kumar',
-    customer_mobile: '9876543210',
-    amount: 5000,
-    payment_method: 'upi',
-    reference_number: 'PY-2024-001',
-    description: 'Payment for Invoice INV-001',
-    status: 'issued',
-    created_at: '2024-01-15T10:30:00Z',
-  },
-  {
-    id: '2',
-    receipt_number: 'RCP-2024-002',
-    receipt_date: '2024-01-14',
-    customer_name: 'Priya Sharma',
-    customer_mobile: '9876543211',
-    amount: 15000,
-    payment_method: 'bank_transfer',
-    reference_number: 'PY-2024-002',
-    description: 'Advance payment for order',
-    status: 'issued',
-    created_at: '2024-01-14T14:20:00Z',
-  },
-  {
-    id: '3',
-    receipt_number: 'RCP-2024-003',
-    receipt_date: '2024-01-13',
-    customer_name: 'Amit Patel',
-    customer_mobile: '9876543212',
-    amount: 8500,
-    payment_method: 'cash',
-    reference_number: 'PY-2024-003',
-    description: 'Partial payment for steel order',
-    status: 'issued',
-    created_at: '2024-01-13T11:15:00Z',
-  },
-  {
-    id: '4',
-    receipt_number: 'RCP-2024-004',
-    receipt_date: '2024-01-12',
-    customer_name: 'Vikram Reddy',
-    customer_mobile: '9876543213',
-    amount: 25000,
-    payment_method: 'cheque',
-    reference_number: 'PY-2024-004',
-    description: 'Full settlement',
-    status: 'cancelled',
-    created_at: '2024-01-12T09:45:00Z',
-  },
-];
+const getAuthHeaders = async () => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+  } catch (e) {
+    console.warn('Could not read session token', e);
+  }
+  return headers;
+};
 
 export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<PaymentReceipt[]>([]);
@@ -93,8 +53,46 @@ export default function ReceiptsPage() {
   const [showCustomDates, setShowCustomDates] = useState(false);
 
   useEffect(() => {
-    setReceipts(mockReceipts);
+    async function loadReceipts() {
+      try {
+        setLoading(true);
+        const headers = await getAuthHeaders();
+        const response = await fetch('/api/receipts', { headers });
+        if (response.ok) {
+          const data = await response.json();
+          setReceipts(data.receipts || []);
+        } else {
+          console.error('Failed to fetch receipts');
+        }
+      } catch (e) {
+        console.error('Error loading receipts:', e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadReceipts();
   }, []);
+
+  const handleDelete = async (receiptId: string, receiptNumber: string) => {
+    if (!confirm(`Are you sure you want to delete ${receiptNumber}?`)) return;
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/receipts/${receiptId}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (response.ok) {
+        setReceipts(prev => prev.filter(r => r.id !== receiptId));
+      } else {
+        const result = await response.json();
+        alert(result.error?.message || 'Failed to delete receipt');
+      }
+    } catch (err) {
+      alert('An error occurred while deleting the receipt');
+    }
+  };
 
   const filteredReceipts = receipts
     .filter((r) => {
@@ -103,10 +101,10 @@ export default function ReceiptsPage() {
       if (search) {
         const query = search.toLowerCase();
         return (
-          r.customer_name.toLowerCase().includes(query) ||
+          r.customer_name?.toLowerCase().includes(query) ||
           r.receipt_number.toLowerCase().includes(query) ||
-          r.reference_number.toLowerCase().includes(query) ||
-          r.customer_mobile.includes(query)
+          r.reference_number?.toLowerCase().includes(query) ||
+          r.customer_mobile?.includes(query)
         );
       }
       if (dateFilter !== 'all' && dateFilter !== 'custom') {
@@ -188,14 +186,12 @@ export default function ReceiptsPage() {
           <h1 className="text-2xl font-bold text-gray-900">Payment Receipts</h1>
           <p className="text-gray-500">Manage and print payment receipts</p>
         </div>
-        <div className="flex gap-2">
-          <Button asChild>
-            <Link href="/dashboard/receipts/new">
-              <Plus className="mr-2 h-4 w-4" />
-              New Receipt
-            </Link>
-          </Button>
-        </div>
+        <Button asChild>
+          <Link href="/dashboard/receipts/new">
+            <Plus className="mr-2 h-4 w-4" />
+            New Receipt
+          </Link>
+        </Button>
       </div>
 
       {/* Summary Cards */}
@@ -205,7 +201,9 @@ export default function ReceiptsPage() {
             <CardTitle className="text-sm font-medium text-gray-500">Total Receipts</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-gray-900">{filteredReceipts.length}</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {loading ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : filteredReceipts.length}
+            </div>
           </CardContent>
         </Card>
 
@@ -318,13 +316,6 @@ export default function ReceiptsPage() {
                 />
               </div>
             )}
-
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/pdf/receipts" target="_blank">
-                <Download className="mr-2 h-4 w-4" />
-                Export PDF
-              </Link>
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -347,15 +338,15 @@ export default function ReceiptsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredReceipts.length === 0 ? (
+                {filteredReceipts.length === 0 && !loading ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-12">
                       <div className="flex flex-col items-center">
                         <Calendar className="h-12 w-12 text-gray-300 mb-3" />
                         <p className="text-gray-500">No receipts found</p>
-                        <Button asChild className="mt-4">
-                          <Link href="/dashboard/receipts/new">Create Receipt</Link>
-                        </Button>
+                        <Link href="/dashboard/receipts/new" className="mt-2 text-blue-600 hover:underline">
+                          Create first receipt
+                        </Link>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -370,7 +361,7 @@ export default function ReceiptsPage() {
                       </TableCell>
                       <TableCell>
                         <Link
-                          href={`/dashboard/customers/1`}
+                          href={`/dashboard/customers/${receipt.customer_id || '1'}`}
                           className="font-medium text-blue-600 hover:underline"
                         >
                           {receipt.customer_name}
@@ -412,6 +403,9 @@ export default function ReceiptsPage() {
                             <Link href={`/dashboard/receipts/${receipt.id}/print`} target="_blank">
                               <Printer className="h-4 w-4" />
                             </Link>
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(receipt.id, receipt.receipt_number)} title="Delete">
+                            <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>
                       </TableCell>
