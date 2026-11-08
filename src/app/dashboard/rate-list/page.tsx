@@ -18,6 +18,7 @@ interface Product {
   item_name: string;
   item_code: string;
   category: string;
+  category_id?: string;
   unit: string;
   quantity: number;
   rate: number;
