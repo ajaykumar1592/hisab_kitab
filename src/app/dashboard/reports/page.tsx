@@ -49,89 +49,6 @@ interface MonthlyReport {
   new_customers: number;
 }
 
-const mockOutstandingData: OutstandingReport[] = [
-  {
-    customer_id: '1',
-    customer_name: 'Rajesh Kumar',
-    mobile_number: '9876543210',
-    address: 'Mumbai, Maharashtra',
-    opening_balance: 5000,
-    total_credit: 45000,
-    total_debit: 15000,
-    closing_balance: 35000,
-    balance_type: 'receivable',
-    last_transaction_date: '2024-01-15',
-    days_overdue: 15,
-  },
-  {
-    customer_id: '2',
-    customer_name: 'Priya Sharma',
-    mobile_number: '9876543211',
-    address: 'Delhi, Delhi',
-    opening_balance: -2000,
-    total_credit: 25000,
-    total_debit: 30000,
-    closing_balance: 3000,
-    balance_type: 'payable',
-    last_transaction_date: '2024-01-10',
-    days_overdue: 0,
-  },
-  {
-    customer_id: '3',
-    customer_name: 'Amit Patel',
-    mobile_number: '9876543212',
-    address: 'Ahmedabad, Gujarat',
-    opening_balance: 10000,
-    total_credit: 60000,
-    total_debit: 45000,
-    closing_balance: 25000,
-    balance_type: 'receivable',
-    last_transaction_date: '2024-01-16',
-    days_overdue: 5,
-  },
-  {
-    customer_id: '4',
-    customer_name: 'Vikram Reddy',
-    mobile_number: '9876543213',
-    address: 'Hyderabad, Telangana',
-    opening_balance: 0,
-    total_credit: 15000,
-    total_debit: 8000,
-    closing_balance: 7000,
-    balance_type: 'receivable',
-    last_transaction_date: '2024-01-14',
-    days_overdue: 0,
-  },
-  {
-    customer_id: '5',
-    customer_name: 'Sunita Devi',
-    mobile_number: '9876543214',
-    address: 'Bangalore, Karnataka',
-    opening_balance: -5000,
-    total_credit: 10000,
-    total_debit: 20000,
-    closing_balance: 5000,
-    balance_type: 'payable',
-    last_transaction_date: '2024-01-05',
-    days_overdue: 0,
-  },
-];
-
-const mockDailyData: DailyReport[] = [
-  { date: '2024-01-16', total_sales: 25000, total_purchases: 5000, total_payments_received: 15000, total_payments_made: 3000, net_cash_flow: 12000, transaction_count: 8 },
-  { date: '2024-01-15', total_sales: 18000, total_purchases: 8000, total_payments_received: 12000, total_payments_made: 2000, net_cash_flow: 8000, transaction_count: 6 },
-  { date: '2024-01-14', total_sales: 30000, total_purchases: 10000, total_payments_received: 20000, total_payments_made: 5000, net_cash_flow: 15000, transaction_count: 10 },
-  { date: '2024-01-13', total_sales: 12000, total_purchases: 3000, total_payments_received: 8000, total_payments_made: 1000, net_cash_flow: 8000, transaction_count: 5 },
-  { date: '2024-01-12', total_sales: 22000, total_purchases: 6000, total_payments_received: 15000, total_payments_made: 4000, net_cash_flow: 11000, transaction_count: 7 },
-];
-
-const mockMonthlyData: MonthlyReport[] = [
-  { month: '2024-01', total_sales: 450000, total_purchases: 120000, total_payments_received: 380000, total_payments_made: 95000, opening_outstanding: 50000, closing_outstanding: 70000, new_customers: 8 },
-  { month: '2023-12', total_sales: 420000, total_purchases: 110000, total_payments_received: 400000, total_payments_made: 90000, opening_outstanding: 45000, closing_outstanding: 50000, new_customers: 6 },
-  { month: '2023-11', total_sales: 380000, total_purchases: 100000, total_payments_received: 350000, total_payments_made: 85000, opening_outstanding: 40000, closing_outstanding: 45000, new_customers: 5 },
-  { month: '2023-10', total_sales: 350000, total_purchases: 95000, total_payments_received: 330000, total_payments_made: 80000, opening_outstanding: 35000, closing_outstanding: 40000, new_customers: 4 },
-];
-
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<'outstanding' | 'daily' | 'monthly' | 'sales' | 'gst'>('outstanding');
   const [loading, setLoading] = useState(false);
@@ -139,24 +56,121 @@ export default function ReportsPage() {
   const [filterType, setFilterType] = useState<'all' | 'receivable' | 'payable' | 'overdue'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Summary calculations for outstanding
-  const outstandingSummary = {
-    total_receivable: mockOutstandingData.filter(d => d.balance_type === 'receivable').reduce((sum, d) => sum + d.closing_balance, 0),
-    total_payable: mockOutstandingData.filter(d => d.balance_type === 'payable').reduce((sum, d) => sum + d.closing_balance, 0),
-    overdue_count: mockOutstandingData.filter(d => d.days_overdue > 0).length,
-    total_customers: mockOutstandingData.length,
-  };
+  useEffect(() => {
+    async function loadOutstandingReport() {
+      try {
+        setLoading(true);
+        const headers = await (async () => {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          try {
+            const supabase = createClient();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+              headers['Authorization'] = `Bearer ${session.access_token}`;
+            }
+          } catch (e) {
+            console.warn('Could not read session token', e);
+          }
+          return headers;
+        })();
+        const response = await fetch('/api/reports/outstanding', { headers });
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.outstanding) {
+            setOutstandingData(data.outstanding);
+            setOutstandingSummary(data.summary || {
+              total_receivable: 0,
+              total_payable: 0,
+              overdue_count: 0,
+              total_customers: 0,
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load outstanding report:', e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadOutstandingReport();
+  }, []);
 
-  const filteredOutstanding = mockOutstandingData.filter(item => {
-    if (filterType !== 'all' && filterType !== item.balance_type && !(filterType === 'overdue' && item.days_overdue > 0)) {
-      return false;
+  useEffect(() => {
+    async function loadDailyReport() {
+      try {
+        setLoading(true);
+        const headers = await (async () => {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          try {
+            const supabase = createClient();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+              headers['Authorization'] = `Bearer ${session.access_token}`;
+            }
+          } catch (e) {
+            console.warn('Could not read session token', e);
+          }
+          return headers;
+        })();
+        const response = await fetch('/api/reports/daily', { headers });
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.daily) {
+            setDailyData(data.daily);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load daily report:', e);
+      } finally {
+        setLoading(false);
+      }
     }
-    if (searchTerm && !item.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-        !item.mobile_number.includes(searchTerm)) {
-      return false;
+    loadDailyReport();
+  }, []);
+
+  useEffect(() => {
+    async function loadMonthlyReport() {
+      try {
+        setLoading(true);
+        const headers = await (async () => {
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          try {
+            const supabase = createClient();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+              headers['Authorization'] = `Bearer ${session.access_token}`;
+            }
+          } catch (e) {
+            console.warn('Could not read session token', e);
+          }
+          return headers;
+        })();
+        const response = await fetch('/api/reports/monthly', { headers });
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.monthly) {
+            setMonthlyData(data.monthly);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load monthly report:', e);
+      } finally {
+        setLoading(false);
+      }
     }
-    return true;
+    loadMonthlyReport();
+  }, []);
+
+  const [outstandingData, setOutstandingData] = useState<OutstandingReport[]>([]);
+  const [outstandingSummary, setOutstandingSummary] = useState({
+    total_receivable: 0,
+    total_payable: 0,
+    overdue_count: 0,
+    total_customers: 0,
   });
+
+  const [dailyData, setDailyData] = useState<DailyReport[]>([]);
+  const [monthlyData, setMonthlyData] = useState<MonthlyReport[]>([]);
 
   const getAgingBucket = (days: number) => {
     if (days <= 0) return 'Current';

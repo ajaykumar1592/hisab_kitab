@@ -38,65 +38,6 @@ export default function LedgerPage() {
   const [customEndDate, setCustomEndDate] = useState('');
   const [showCustomDates, setShowCustomDates] = useState(false);
 
-  // Mock data for UI demonstration
-  const mockTransactions: Transaction[] = [
-    {
-      id: '1',
-      transaction_date: '2024-01-15',
-      transaction_type: 'credit',
-      amount: 5000,
-      description: 'Sale of cement bags',
-      reference_number: 'INV-001',
-      payment_method: 'cash',
-      customer_name: 'Rajesh Kumar',
-      customer_id: '1',
-    },
-    {
-      id: '2',
-      transaction_date: '2024-01-15',
-      transaction_type: 'payment',
-      amount: 2000,
-      description: 'Payment received',
-      reference_number: 'PY-2024-001',
-      payment_method: 'upi',
-      customer_name: 'Rajesh Kumar',
-      customer_id: '1',
-    },
-    {
-      id: '3',
-      transaction_date: '2024-01-14',
-      transaction_type: 'credit',
-      amount: 15000,
-      description: 'Steel rods purchase',
-      reference_number: 'INV-002',
-      payment_method: 'bank_transfer',
-      customer_name: 'Amit Patel',
-      customer_id: '3',
-    },
-    {
-      id: '4',
-      transaction_date: '2024-01-13',
-      transaction_type: 'payment',
-      amount: 5000,
-      description: 'Partial payment',
-      reference_number: 'PY-2024-002',
-      payment_method: 'cheque',
-      customer_name: 'Priya Sharma',
-      customer_id: '2',
-    },
-    {
-      id: '5',
-      transaction_date: '2024-01-12',
-      transaction_type: 'credit',
-      amount: 8000,
-      description: 'Construction materials',
-      reference_number: 'INV-003',
-      payment_method: 'cash',
-      customer_name: 'Vikram Reddy',
-      customer_id: '5',
-    },
-  ];
-
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     try {
@@ -120,13 +61,11 @@ export default function LedgerPage() {
           const data = await response.json();
           if (data?.transactions && data.transactions.length > 0) {
             setTransactions(data.transactions);
-            return;
           }
         }
       } catch (e) {
-        // fallback
+        // Fallback handled by showing empty state
       }
-      setTransactions(mockTransactions);
     }
     loadTransactions();
   }, []);
@@ -221,6 +160,27 @@ export default function LedgerPage() {
     debit: filteredTransactions
       .filter((t) => ['debit', 'payment', 'sales_return', 'purchase_return'].includes(t.transaction_type))
       .reduce((sum, t) => sum + t.amount, 0),
+  };
+
+  const handleDelete = async (transactionId: string) => {
+    if (!confirm('Are you sure you want to delete this transaction?')) return;
+
+    try {
+      const headers = await getAuthHeaders();
+      const response = await fetch(`/api/transactions/${transactionId}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (response.ok) {
+        setTransactions(prev => prev.filter(t => t.id !== transactionId));
+      } else {
+        const result = await response.json();
+        alert(result.error?.message || 'Failed to delete transaction');
+      }
+    } catch (err) {
+      alert('An error occurred while deleting the transaction');
+    }
   };
 
   return (
@@ -436,7 +396,7 @@ export default function LedgerPage() {
                               <Edit className="h-4 w-4" />
                             </Link>
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => alert('Delete not implemented')} title="Delete">
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(txn.id)} title="Delete">
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </div>

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { Users, TrendingUp, CreditCard, Package, Plus, Clock, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { Users, TrendingUp, CreditCard, Package, Plus, Clock, ArrowUpRight, ArrowDownRight, Loader2 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '@/lib/utils';
 import { format } from 'date-fns';
 import { useTranslation } from '@/lib/i18n';
@@ -37,56 +37,16 @@ interface DashboardStats {
 }
 
 const defaultStats: DashboardStats = {
-  total_customers: 5,
-  total_receivable: 40000,
-  total_payable: 17000,
-  today_credit: 15000,
-  today_debit: 5000,
-  today_payments: 7000,
-  this_month_sales: 125000,
-  this_month_payments: 85000,
-  outstanding_customers: [
-    {
-      id: '1',
-      name: 'Rajesh Kumar',
-      mobile_number: '9876543210',
-      balance: 15000,
-      last_transaction_date: '2024-01-15',
-    },
-    {
-      id: '3',
-      name: 'Amit Patel',
-      mobile_number: '7654321098',
-      balance: 25000,
-      last_transaction_date: '2024-01-10',
-    },
-  ],
-  recent_transactions: [
-    {
-      id: '1',
-      transaction_date: '2024-01-15',
-      transaction_type: 'credit',
-      amount: 5000,
-      description: 'Sale of cement bags',
-      customer_name: 'Rajesh Kumar',
-    },
-    {
-      id: '2',
-      transaction_date: '2024-01-15',
-      transaction_type: 'payment',
-      amount: 2000,
-      description: 'Payment received (UPI)',
-      customer_name: 'Rajesh Kumar',
-    },
-    {
-      id: '3',
-      transaction_date: '2024-01-14',
-      transaction_type: 'credit',
-      amount: 15000,
-      description: 'Steel rods purchase',
-      customer_name: 'Amit Patel',
-    },
-  ],
+  total_customers: 0,
+  total_receivable: 0,
+  total_payable: 0,
+  today_credit: 0,
+  today_debit: 0,
+  today_payments: 0,
+  this_month_sales: 0,
+  this_month_payments: 0,
+  outstanding_customers: [],
+  recent_transactions: [],
 };
 
 export default function DashboardPage() {
