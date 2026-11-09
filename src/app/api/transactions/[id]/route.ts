@@ -1,6 +1,6 @@
 import { createServerClient } from '@/lib/supabase/client';
 import { NextRequest, NextResponse } from 'next/server';
-import { transactionUpdateSchema } from '@/lib/validation/schemas';
+import { transactionUpdateSchema, transactionItemSchema, transactionItemUpdateSchema } from '@/lib/validation/schemas';
 
 export async function GET(
   request: NextRequest,
@@ -41,8 +41,14 @@ export async function GET(
         customers (
           id,
           name,
-          mobile_number
-        )
+          mobile_number,
+          address,
+          city,
+          state,
+          pin_code,
+          gstin
+        ),
+        transaction_items (*)
       `)
       .eq('id', id)
       .eq('business_id', membership.business_id)
@@ -54,6 +60,11 @@ export async function GET(
         { error: { message: 'Transaction not found' } },
         { status: 404 }
       );
+    }
+
+    // Sort items by sort_order
+    if (transaction.transaction_items) {
+      transaction.transaction_items.sort((a: any, b: any) => a.sort_order - b.sort_order);
     }
 
     return NextResponse.json({ transaction });
@@ -144,6 +155,65 @@ export async function PUT(
       }
     }
 
+    // Calculate transaction totals from items if provided
+    let subtotal = 0;
+    let discountAmount = 0;
+    let taxableAmount = 0;
+    let totalGst = 0;
+    let grandTotal = 0;
+
+    const items = validation.data.items || [];
+
+    if (items.length > 0) {
+      for (const item of items) {
+        const lineSubtotal = item.quantity * item.rate;
+        let itemDiscount = 0;
+
+        if (item.discount_type === 'percentage') {
+          itemDiscount = (lineSubtotal * item.discount_value) / 100;
+        } else if (item.discount_type === 'fixed') {
+          itemDiscount = item.discount_value;
+        }
+
+        const itemTaxable = lineSubtotal - itemDiscount;
+        const itemGst = (itemTaxable * item.gst_percentage) / 100;
+        const itemTotal = itemTaxable + itemGst;
+
+        subtotal += lineSubtotal;
+        discountAmount += itemDiscount;
+        taxableAmount += itemTaxable;
+        totalGst += itemGst;
+        grandTotal += itemTotal;
+      }
+    }
+
+    // Apply transaction-level discount if any
+    let finalDiscountAmount = discountAmount;
+    let finalTaxableAmount = taxableAmount;
+    let finalTotalGst = totalGst;
+    let finalGrandTotal = grandTotal;
+
+    const discountType = validation.data.discount_type || 'none';
+    const discountValue = validation.data.discount_value || 0;
+
+    if (discountType !== 'none' && discountValue > 0 && taxableAmount > 0) {
+      if (discountType === 'percentage') {
+        const txnDiscount = (taxableAmount * discountValue) / 100;
+        finalDiscountAmount += txnDiscount;
+        finalTaxableAmount -= txnDiscount;
+        finalTotalGst = (finalTaxableAmount * totalGst) / taxableAmount;
+        finalGrandTotal = finalTaxableAmount + finalTotalGst;
+      } else if (discountType === 'fixed') {
+        finalDiscountAmount += discountValue;
+        finalTaxableAmount -= discountValue;
+        finalTotalGst = (finalTaxableAmount * totalGst) / taxableAmount;
+        finalGrandTotal = finalTaxableAmount + finalTotalGst;
+      }
+    }
+
+    // Use grand_total as the main amount field for backward compatibility
+    const transactionAmount = items.length > 0 ? finalGrandTotal : validation.data.amount;
+
     // Update transaction
     const { data: transaction, error } = await supabase
       .from('transactions')
@@ -151,6 +221,14 @@ export async function PUT(
         ...validation.data,
         reference_number: body.reference_number || null,
         payment_method: body.payment_method || null,
+        amount: transactionAmount,
+        discount_type: discountType,
+        discount_value: discountValue,
+        subtotal: items.length > 0 ? subtotal : undefined,
+        discount_amount: items.length > 0 ? finalDiscountAmount : undefined,
+        taxable_amount: items.length > 0 ? finalTaxableAmount : undefined,
+        total_gst: items.length > 0 ? finalTotalGst : undefined,
+        grand_total: items.length > 0 ? finalGrandTotal : undefined,
       })
       .eq('id', id)
       .eq('business_id', membership.business_id)
@@ -165,7 +243,65 @@ export async function PUT(
       );
     }
 
-    return NextResponse.json({ transaction });
+    // Handle transaction items update if provided
+    if (body.items && Array.isArray(body.items)) {
+      // Delete existing items
+      await supabase
+        .from('transaction_items')
+        .delete()
+        .eq('transaction_id', id);
+
+      // Insert new items
+      const transactionItems = body.items.map((item: any, index: number) => ({
+        business_id: membership.business_id,
+        transaction_id: id,
+        product_id: item.product_id || null,
+        item_name: item.item_name,
+        item_code: item.item_code || null,
+        description: item.description || null,
+        unit: item.unit,
+        quantity: item.quantity,
+        rate: item.rate,
+        gst_percentage: item.gst_percentage || 0,
+        discount_type: item.discount_type || 'none',
+        discount_value: item.discount_value || 0,
+        sort_order: item.sort_order || index,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('transaction_items')
+        .insert(transactionItems);
+
+      if (itemsError) {
+        console.error('Transaction items update error:', itemsError);
+      }
+    }
+
+    // Fetch the complete transaction with items for response
+    const { data: completeTransaction } = await supabase
+      .from('transactions')
+      .select(`
+        *,
+        customers (
+          id,
+          name,
+          mobile_number,
+          address,
+          city,
+          state,
+          pin_code,
+          gstin
+        ),
+        transaction_items (*)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (completeTransaction?.transaction_items) {
+      completeTransaction.transaction_items.sort((a: any, b: any) => a.sort_order - b.sort_order);
+    }
+
+    return NextResponse.json({ transaction: completeTransaction });
   } catch (error) {
     console.error('Transaction PUT error:', error);
     return NextResponse.json(
@@ -207,7 +343,7 @@ export async function DELETE(
       );
     }
 
-    // Soft delete - set deleted_at
+    // Soft delete - set deleted_at (cascade will handle transaction_items)
     const { error } = await supabase
       .from('transactions')
       .update({ deleted_at: new Date().toISOString() })

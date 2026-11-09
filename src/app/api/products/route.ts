@@ -51,15 +51,16 @@ export async function GET(request: NextRequest) {
     }
 
     const transformedProducts = (products || []).map(p => {
-      let hsn_code = (p as any).hsn_code || '';
+      let hsn_code = p.hsn_code || '';
       if (!hsn_code && p.description) {
         const match = p.description.match(/HSN:\s*([A-Za-z0-9]+)/i);
         if (match) hsn_code = match[1];
       }
+      const categoryName = (p as any).product_categories?.name || 'Uncategorized';
       return {
         ...p,
-        category: p.product_categories?.name || 'Uncategorized',
-        hsn_code,
+        category: categoryName,
+        hsn_code: hsn_code || '',
       };
     });
 
@@ -147,7 +148,6 @@ export async function POST(request: NextRequest) {
 
     const productPayload: Record<string, unknown> = {
       business_id: businessId,
-      category_id: validCategoryId,
       item_name: validation.data.item_name,
       item_code: validation.data.item_code || null,
       description: description || null,
@@ -158,6 +158,11 @@ export async function POST(request: NextRequest) {
       final_rate: finalRate,
       status: validation.data.status || 'active',
     };
+
+    // Only add category_id if we have a valid one
+    if (validCategoryId) {
+      productPayload.category_id = validCategoryId;
+    }
 
     if (validation.data.minimum_order_quantity !== undefined && validation.data.minimum_order_quantity !== null) {
       productPayload.minimum_order_quantity = validation.data.minimum_order_quantity;

@@ -30,9 +30,43 @@ export const transactionSchema = z.object({
   description: z.string().max(500).optional(),
   reference_number: z.string().max(100).optional(),
   payment_method: z.enum(['cash', 'upi', 'bank_transfer', 'cheque', 'other']).optional(),
+
+  // New fields for material-based transactions
+  discount_type: z.enum(['none', 'percentage', 'fixed']).default('none'),
+  discount_value: z.number().min(0).default(0),
+  items: z.array(z.object({
+    product_id: z.string().uuid().optional().nullable(),
+    item_name: z.string().min(1, 'Item name is required').max(255),
+    item_code: z.string().max(50).optional().nullable(),
+    description: z.string().max(1000).optional().nullable(),
+    unit: z.string().min(1, 'Unit is required').max(50),
+    quantity: z.number().positive('Quantity must be positive'),
+    rate: z.number().min(0, 'Rate must be positive'),
+    gst_percentage: z.number().min(0).max(100).default(0),
+    discount_type: z.enum(['none', 'percentage', 'fixed']).default('none'),
+    discount_value: z.number().min(0).default(0),
+    sort_order: z.number().default(0),
+  })).optional(),
 });
 
 export const transactionUpdateSchema = transactionSchema.partial();
+
+// Transaction Item schemas
+export const transactionItemSchema = z.object({
+  product_id: z.string().uuid().optional().nullable(),
+  item_name: z.string().min(1, 'Item name is required').max(255),
+  item_code: z.string().max(50).optional().nullable(),
+  description: z.string().max(1000).optional().nullable(),
+  unit: z.string().min(1, 'Unit is required').max(50),
+  quantity: z.number().positive('Quantity must be positive'),
+  rate: z.number().min(0, 'Rate must be positive'),
+  gst_percentage: z.number().min(0).max(100).default(0),
+  discount_type: z.enum(['none', 'percentage', 'fixed']).default('none'),
+  discount_value: z.number().min(0).default(0),
+  sort_order: z.number().default(0),
+});
+
+export const transactionItemUpdateSchema = transactionItemSchema.partial();
 
 // Product schemas
 export const productSchema = z.object({
@@ -73,7 +107,7 @@ export const productQuerySchema = z.object({
   status: z.string().optional(),
   sort_by: z.string().optional(),
   sort_order: z.enum(['asc', 'desc']).optional(),
-  limit: z.coerce.number().min(1).max(100).optional(),
+  limit: z.coerce.number().min(1).max(500).optional(),
   offset: z.coerce.number().min(0).optional(),
 });
 

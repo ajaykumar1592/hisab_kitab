@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Search, Filter, Calendar, Download, CreditCard, Trash2, Edit, Eye } from 'lucide-react';
+import { Plus, Search, Filter, Calendar, Download, CreditCard, Trash2, Edit, Eye, FileText } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { format, subDays, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -396,6 +396,17 @@ export default function LedgerPage() {
                               <Edit className="h-4 w-4" />
                             </Link>
                           </Button>
+                          {['credit', 'debit', 'sales_return', 'purchase_return'].includes(txn.transaction_type) && (
+                            <a
+                              href={`/api/transactions/${txn.id}/pdf`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 hover:bg-blue-50 rounded transition-colors"
+                              title="Generate Invoice"
+                            >
+                              <FileText className="h-4 w-4 text-blue-500 hover:text-blue-700" />
+                            </a>
+                          )}
                           <Button variant="ghost" size="icon" onClick={() => handleDelete(txn.id)} title="Delete">
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
