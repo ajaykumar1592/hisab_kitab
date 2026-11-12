@@ -26,6 +26,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (data.user?.user_metadata?.status === 'inactive') {
+      return NextResponse.json(
+        { error: { message: 'This account has been deactivated. Please contact your administrator.' } },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json({
       user: data.user,
       session: data.session,

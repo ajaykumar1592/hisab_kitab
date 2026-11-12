@@ -19,6 +19,7 @@ export const translations: Translations = {
   rateList: { en: 'Rate List', hi: 'रेट लिस्ट (मूल्य सूची)' },
   receipts: { en: 'Receipts', hi: 'रसीदें' },
   reports: { en: 'Reports', hi: 'रिपोर्ट्स' },
+  users: { en: 'Users', hi: 'उपयोगकर्ता' },
   settings: { en: 'Settings', hi: 'सेटिंग्स' },
   materialCategories: { en: 'Material Categories', hi: 'सामग्री श्रेणियाँ' },
   exportData: { en: 'Export Data', hi: 'डेटा निर्यात' },

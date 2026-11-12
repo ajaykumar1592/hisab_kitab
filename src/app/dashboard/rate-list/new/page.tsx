@@ -73,7 +73,13 @@ export default function NewProductPage() {
   });
 
   const onInvalid = () => {
-    setError(isHindi ? 'कृपया सभी आवश्यक फ़ील्ड भरें और त्रुटियों को ठीक करें।' : 'Please check all required fields and fix validation errors before submitting.');
+    const errorMessages = Object.entries(errors)
+      .map(([field, err]: any) => err?.message)
+      .filter(Boolean);
+    const msg = errorMessages.length > 0
+      ? (isHindi ? `कृपया आवश्यक फ़ील्ड भरें: ${errorMessages.join(', ')}` : `Please check required fields: ${errorMessages.join(', ')}`)
+      : (isHindi ? 'कृपया सभी आवश्यक फ़ील्ड भरें और त्रुटियों को ठीक करें।' : 'Please check all required fields and fix validation errors before submitting.');
+    setError(msg);
     const errorKeys = Object.keys(errors);
     if (errorKeys.length > 0) {
       setFocus(errorKeys[0] as any);

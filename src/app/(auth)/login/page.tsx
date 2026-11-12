@@ -73,6 +73,11 @@ export default function LoginPage() {
         }
       }
 
+      if (authData?.user?.user_metadata?.status === 'inactive') {
+        await supabase.auth.signOut();
+        throw new Error('This account has been deactivated. Please contact your administrator.');
+      }
+
       router.push('/dashboard');
       router.refresh();
     } catch (err) {

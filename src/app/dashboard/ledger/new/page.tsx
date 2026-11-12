@@ -67,13 +67,13 @@ interface Customer {
 
 // Transaction item form schema
 const transactionItemSchema = z.object({
-  product_id: z.string().uuid().optional().nullable(),
-  item_name: z.string().min(1, 'Item name is required').max(255),
+  product_id: z.string().uuid().optional().nullable().or(z.literal('')),
+  item_name: z.string().max(255).optional().default(''),
   item_code: z.string().max(50).optional().nullable(),
   description: z.string().max(1000).optional().nullable(),
-  unit: z.string().min(1, 'Unit is required').max(50),
-  quantity: z.number().positive('Quantity must be positive').min(0.001),
-  rate: z.number().min(0, 'Rate must be positive'),
+  unit: z.string().max(50).optional().default('PCS'),
+  quantity: z.number().optional().default(1),
+  rate: z.number().optional().default(0),
   gst_percentage: z.number().min(0).max(100).default(0),
   discount_type: z.enum(['none', 'percentage', 'fixed']).default('none'),
   discount_value: z.number().min(0).default(0),
@@ -81,16 +81,16 @@ const transactionItemSchema = z.object({
 });
 
 const transactionSchema = z.object({
-  customer_id: z.string().min(1, 'Please select a customer'),
-  transaction_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
+  customer_id: z.string().optional().default(''),
+  transaction_date: z.string().optional().default(''),
   transaction_type: z.enum(['credit', 'debit', 'payment', 'opening', 'adjustment', 'sales_return', 'purchase_return']),
-  amount: z.number().positive('Amount must be positive'),
+  amount: z.number().optional().default(0),
   description: z.string().max(500).optional().or(z.literal('')),
   reference_number: z.string().max(100).optional().or(z.literal('')),
   payment_method: z.enum(['cash', 'upi', 'bank_transfer', 'cheque', 'other']).optional(),
   discount_type: z.enum(['none', 'percentage', 'fixed']).default('none'),
   discount_value: z.number().min(0).default(0),
-  items: z.array(transactionItemSchema).min(1, 'At least one item is required for material transactions'),
+  items: z.array(transactionItemSchema).optional().default([]),
 });
 
 type TransactionForm = z.infer<typeof transactionSchema>;
@@ -159,6 +159,8 @@ export default function NewTransactionPage() {
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorList, setErrorList] = useState<string[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({});
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refNumberLoading, setRefNumberLoading] = useState(false);
@@ -382,12 +384,107 @@ export default function NewTransactionPage() {
   const transactionType = watch('transaction_type');
   const isMaterialTransaction = ['credit', 'debit', 'sales_return', 'purchase_return'].includes(transactionType);
 
-  const onInvalid = () => {
-    setError('Please check all required fields and fix validation errors before submitting.');
-    const errorKeys = Object.keys(errors);
-    if (errorKeys.length > 0) {
-      setFocus(errorKeys[0] as any);
+  const validateForm = (data: TransactionForm): { isValid: boolean; errorList: string[]; fieldErrors: Record<string, boolean> } => {
+    const errList: string[] = [];
+    const fErrors: Record<string, boolean> = {};
+
+    // 1. Customer
+    if (!data.customer_id) {
+      errList.push(language === 'hi' ? 'कृपया ग्राहक चुनें (Customer is required)' : 'Customer is required. Please select a customer.');
+      fErrors['customer_id'] = true;
     }
+
+    // 2. Transaction Date
+    if (!data.transaction_date) {
+      errList.push(language === 'hi' ? 'तारीख चुनना आवश्यक है (Date is required)' : 'Transaction Date is required.');
+      fErrors['transaction_date'] = true;
+    }
+
+    // 3. Transaction Type
+    if (!data.transaction_type) {
+      errList.push(language === 'hi' ? 'लेन-देन प्रकार आवश्यक है (Transaction Type is required)' : 'Transaction Type is required.');
+      fErrors['transaction_type'] = true;
+    }
+
+    // 4. Material items vs simple
+    if (isMaterialTransaction) {
+      const allItems = data.items || [];
+      const nonBlankItems = allItems.filter(i => i.item_name && i.item_name.trim().length > 0);
+
+      if (nonBlankItems.length === 0) {
+        errList.push(language === 'hi' ? 'कम से कम एक सामान (Material/Item) चुनना आवश्यक है' : 'Please select or add at least one material/item.');
+        fErrors['items.0.item_name'] = true;
+      } else {
+        allItems.forEach((it, idx) => {
+          if (!it.item_name || !it.item_name.trim()) {
+            return; // trailing or intermediate blank row will be cleanly filtered out
+          }
+          const q = typeof it.quantity === 'number' ? it.quantity : parseFloat(String(it.quantity)) || 0;
+          if (q <= 0) {
+            errList.push(language === 'hi' ? `आइटम #${idx + 1} (${it.item_name}): मात्रा (Qty) 0 से अधिक होनी चाहिए` : `Item #${idx + 1} (${it.item_name}): Quantity must be greater than 0.`);
+            fErrors[`items.${idx}.quantity`] = true;
+          }
+          const r = typeof it.rate === 'number' ? it.rate : parseFloat(String(it.rate)) || 0;
+          if (r < 0) {
+            errList.push(language === 'hi' ? `आइटम #${idx + 1} (${it.item_name}): दर (Rate) सही होनी चाहिए` : `Item #${idx + 1} (${it.item_name}): Rate cannot be negative.`);
+            fErrors[`items.${idx}.rate`] = true;
+          }
+        });
+      }
+
+      if (nonBlankItems.length > 0 && finalGrandTotal <= 0) {
+        errList.push(language === 'hi' ? 'लेन-देन की कुल राशि 0 से अधिक होनी चाहिए' : 'Total transaction amount must be greater than 0.');
+      }
+    } else {
+      const amt = typeof data.amount === 'number' ? data.amount : parseFloat(String(data.amount)) || 0;
+      if (amt <= 0) {
+        errList.push(language === 'hi' ? 'राशि (Amount) 0 से अधिक होनी चाहिए' : 'Amount must be greater than 0.');
+        fErrors['amount'] = true;
+      }
+    }
+
+    return {
+      isValid: errList.length === 0,
+      errorList: errList,
+      fieldErrors: fErrors,
+    };
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setErrorList([]);
+
+    const data = watch();
+    const validation = validateForm(data);
+
+    if (!validation.isValid) {
+      setErrorList(validation.errorList);
+      setFieldErrors(validation.fieldErrors);
+      setError(language === 'hi' ? 'कृपया सभी आवश्यक फ़ील्ड भरें और त्रुटियों को ठीक करें।' : 'Please check required fields and fix validation errors.');
+
+      setTimeout(() => {
+        const banner = document.getElementById('form-error-banner');
+        if (banner) {
+          banner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+      return;
+    }
+
+    setFieldErrors({});
+    setErrorList([]);
+
+    const rawItems = data.items || [];
+    const validItems = rawItems.filter(it => it.item_name && it.item_name.trim().length > 0);
+
+    const submitData: TransactionForm = {
+      ...data,
+      amount: isMaterialTransaction ? finalGrandTotal : (Number(data.amount) || 0),
+      items: isMaterialTransaction ? (validItems.length > 0 ? validItems : rawItems) : [],
+    };
+
+    await onSubmit(submitData);
   };
 
   const handleProductSelect = (index: number, product: Product) => {
@@ -398,6 +495,9 @@ export default function NewTransactionPage() {
     setValue(`items.${index}.rate`, Number(product.rate) || 0, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
     setValue(`items.${index}.gst_percentage`, Number(product.gst_percentage) || 0, { shouldDirty: true, shouldTouch: true });
     setValue(`items.${index}.description`, product.description || '', { shouldDirty: true, shouldTouch: true });
+    if (fieldErrors[`items.${index}.item_name`]) {
+      setFieldErrors(prev => ({ ...prev, [`items.${index}.item_name`]: false }));
+    }
     // Default quantity to 1 if not set or <= 0
     const currentQty = watch(`items.${index}.quantity`);
     if (!currentQty || currentQty <= 0) {
@@ -596,13 +696,205 @@ export default function NewTransactionPage() {
     }
   };
 
-  // Render item row
+  // Render mobile item card
+  const renderMobileItemCard = (item: any, index: number) => {
+    const currentItem = watchedItems[index] || item;
+    const totals = calculateLineTotals(currentItem);
+    const nameHasError = !!fieldErrors[`items.${index}.item_name`];
+    const qtyHasError = !!fieldErrors[`items.${index}.quantity`];
+    const rateHasError = !!fieldErrors[`items.${index}.rate`];
+
+    return (
+      <div
+        key={item.id || index}
+        className={cn(
+          "p-3.5 rounded-xl border bg-white shadow-sm space-y-3 transition-colors",
+          (nameHasError || qtyHasError || rateHasError) ? "border-red-400 bg-red-50/20 ring-1 ring-red-300" : "border-gray-200"
+        )}
+      >
+        <div className="flex items-center justify-between">
+          <span className="font-bold text-xs uppercase tracking-wider text-gray-700 bg-gray-100 px-2 py-0.5 rounded">
+            Item #{index + 1}
+          </span>
+          <div className="flex items-center gap-1">
+            {items.length > 1 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => handleRemoveItem(index)}
+                disabled={isSubmitting}
+                className="text-red-600 hover:text-red-800 hover:bg-red-50 h-7 px-2 text-xs"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                Remove
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <Label className="text-xs font-semibold text-gray-700">
+              Material / Item Name <span className="text-red-500">*</span>
+            </Label>
+            <button
+              type="button"
+              onClick={() => openAddMaterialModal('', index)}
+              className="text-[11px] text-blue-600 font-medium hover:underline flex items-center gap-0.5"
+            >
+              <Plus className="h-3 w-3" /> New
+            </button>
+          </div>
+          <ProductSearchSelect
+            products={products}
+            value={currentItem?.item_name || ''}
+            hasError={nameHasError}
+            onSelectProduct={(product) => {
+              handleProductSelect(index, product);
+              if (fieldErrors[`items.${index}.item_name`]) {
+                setFieldErrors(prev => ({ ...prev, [`items.${index}.item_name`]: false }));
+              }
+            }}
+            onChangeManual={(val) => {
+              setValue(`items.${index}.item_name`, val, { shouldDirty: true });
+              if (fieldErrors[`items.${index}.item_name`]) {
+                setFieldErrors(prev => ({ ...prev, [`items.${index}.item_name`]: false }));
+              }
+            }}
+            onAddNewMaterial={(searchTerm) => openAddMaterialModal(searchTerm, index)}
+            disabled={isSubmitting}
+            placeholder="Search material or type name..."
+          />
+          {nameHasError && (
+            <p className="text-xs text-red-600 mt-1">Please enter or select a material name</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <Label className="text-[11px] font-semibold text-gray-700 mb-1 block">Qty <span className="text-red-500">*</span></Label>
+            <Input
+              type="number"
+              step="any"
+              min="0.001"
+              className={cn("h-9 text-sm text-center", qtyHasError && "border-red-500 ring-2 ring-red-200")}
+              value={currentItem?.quantity !== undefined && currentItem?.quantity !== null ? currentItem?.quantity : ''}
+              onChange={e => {
+                const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                setValue(`items.${index}.quantity`, val as any, { shouldDirty: true });
+                if (fieldErrors[`items.${index}.quantity`]) {
+                  setFieldErrors(prev => ({ ...prev, [`items.${index}.quantity`]: false }));
+                }
+              }}
+            />
+            {qtyHasError && <p className="text-[10px] text-red-600 mt-0.5">Qty &gt; 0</p>}
+          </div>
+          <div>
+            <Label className="text-[11px] font-semibold text-gray-700 mb-1 block">Unit</Label>
+            <Select
+              value={currentItem?.unit || 'PCS'}
+              onValueChange={val => setValue(`items.${index}.unit`, val, { shouldDirty: true })}
+            >
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="Unit" />
+              </SelectTrigger>
+              <SelectContent>
+                {unitOptions.map(u => (
+                  <SelectItem key={u} value={u}>{u}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-[11px] font-semibold text-gray-700 mb-1 block">Rate (₹) <span className="text-red-500">*</span></Label>
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              className={cn("h-9 text-sm text-right", rateHasError && "border-red-500 ring-2 ring-red-200")}
+              value={currentItem?.rate !== undefined && currentItem?.rate !== null ? currentItem?.rate : ''}
+              onChange={e => {
+                const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                setValue(`items.${index}.rate`, val as any, { shouldDirty: true });
+                if (fieldErrors[`items.${index}.rate`]) {
+                  setFieldErrors(prev => ({ ...prev, [`items.${index}.rate`]: false }));
+                }
+              }}
+            />
+            {rateHasError && <p className="text-[10px] text-red-600 mt-0.5">Rate &ge; 0</p>}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <Label className="text-[11px] font-medium text-gray-500 mb-1 block">GST %</Label>
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              max="100"
+              className="h-9 text-xs text-center"
+              value={currentItem?.gst_percentage !== undefined ? currentItem?.gst_percentage : ''}
+              onChange={e => {
+                const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                setValue(`items.${index}.gst_percentage`, val as any, { shouldDirty: true });
+              }}
+            />
+          </div>
+          <div>
+            <Label className="text-[11px] font-medium text-gray-500 mb-1 block">Discount</Label>
+            <Select
+              value={currentItem?.discount_type || 'none'}
+              onValueChange={val => setValue(`items.${index}.discount_type`, val as any, { shouldDirty: true })}
+            >
+              <SelectTrigger className="h-9 text-xs">
+                <SelectValue placeholder="Disc." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">None</SelectItem>
+                <SelectItem value="percentage">%</SelectItem>
+                <SelectItem value="fixed">₹</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-[11px] font-medium text-gray-500 mb-1 block">Disc. Val</Label>
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              disabled={currentItem?.discount_type === 'none'}
+              className="h-9 text-xs text-right"
+              value={currentItem?.discount_value !== undefined ? currentItem?.discount_value : ''}
+              onChange={e => {
+                const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                setValue(`items.${index}.discount_value`, val as any, { shouldDirty: true });
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-sm">
+          <span className="text-xs text-gray-500">Item Total:</span>
+          <span className="font-bold text-blue-700 font-mono text-base">
+            {formatCurrency(totals.lineTotal)}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
+  // Render item row (desktop table)
   const renderItemRow = (item: any, index: number) => {
     const currentItem = watchedItems[index] || item;
     const totals = calculateLineTotals(currentItem);
+    const nameHasError = !!fieldErrors[`items.${index}.item_name`];
+    const qtyHasError = !!fieldErrors[`items.${index}.quantity`];
+    const rateHasError = !!fieldErrors[`items.${index}.rate`];
 
     return (
-      <TableRow key={item.id || index} className="hover:bg-gray-50">
+      <TableRow key={item.id || index} className={cn("hover:bg-gray-50", (nameHasError || qtyHasError || rateHasError) && "bg-red-50/20")}>
         <TableCell className="w-10 text-center">
           <Button
             variant="ghost"
@@ -633,30 +925,39 @@ export default function NewTransactionPage() {
           <Controller
             name={`items.${index}.item_name`}
             control={control}
-            rules={{ required: 'Item name is required' }}
             render={({ field }) => (
               <ProductSearchSelect
                 products={products}
                 value={field.value || ''}
-                onSelectProduct={(product) => handleProductSelect(index, product)}
-                onChangeManual={(val) => field.onChange(val)}
+                hasError={nameHasError}
+                onSelectProduct={(product) => {
+                  handleProductSelect(index, product);
+                  if (fieldErrors[`items.${index}.item_name`]) {
+                    setFieldErrors(prev => ({ ...prev, [`items.${index}.item_name`]: false }));
+                  }
+                }}
+                onChangeManual={(val) => {
+                  field.onChange(val);
+                  if (fieldErrors[`items.${index}.item_name`]) {
+                    setFieldErrors(prev => ({ ...prev, [`items.${index}.item_name`]: false }));
+                  }
+                }}
                 onAddNewMaterial={(searchTerm) => openAddMaterialModal(searchTerm, index)}
                 disabled={isSubmitting}
                 placeholder="Search material or type name..."
               />
             )}
           />
-          {errors.items?.[index]?.item_name && (
-            <p className="text-xs text-red-600 mt-1">{errors.items[index].item_name.message}</p>
+          {nameHasError && (
+            <p className="text-xs text-red-600 mt-1">Item name is required</p>
           )}
         </TableCell>
         <TableCell className="w-32">
           <Controller
             name={`items.${index}.unit`}
             control={control}
-            rules={{ required: 'Unit is required' }}
             render={({ field }) => (
-              <Select value={field.value || ''} onValueChange={field.onChange}>
+              <Select value={field.value || 'PCS'} onValueChange={field.onChange}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Unit" />
                 </SelectTrigger>
@@ -673,13 +974,12 @@ export default function NewTransactionPage() {
           <Controller
             name={`items.${index}.quantity`}
             control={control}
-            rules={{ required: 'Quantity is required', min: { value: 0.001, message: 'Qty > 0' } }}
             render={({ field }) => (
               <Input
                 type="number"
                 step="any"
                 min="0.001"
-                className="text-right"
+                className={cn("text-right", qtyHasError && "border-red-500 ring-2 ring-red-200")}
                 {...field}
                 onBlur={field.onBlur}
                 disabled={isSubmitting}
@@ -687,6 +987,9 @@ export default function NewTransactionPage() {
                 onChange={e => {
                   const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
                   field.onChange(val);
+                  if (fieldErrors[`items.${index}.quantity`]) {
+                    setFieldErrors(prev => ({ ...prev, [`items.${index}.quantity`]: false }));
+                  }
                 }}
                 onKeyUp={e => {
                   const target = e.target as HTMLInputElement;
@@ -701,13 +1004,12 @@ export default function NewTransactionPage() {
           <Controller
             name={`items.${index}.rate`}
             control={control}
-            rules={{ required: 'Rate is required', min: { value: 0, message: 'Rate ≥ 0' } }}
             render={({ field }) => (
               <Input
                 type="number"
                 step="any"
                 min="0"
-                className="text-right"
+                className={cn("text-right", rateHasError && "border-red-500 ring-2 ring-red-200")}
                 {...field}
                 onBlur={field.onBlur}
                 disabled={isSubmitting}
@@ -715,6 +1017,9 @@ export default function NewTransactionPage() {
                 onChange={e => {
                   const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
                   field.onChange(val);
+                  if (fieldErrors[`items.${index}.rate`]) {
+                    setFieldErrors(prev => ({ ...prev, [`items.${index}.rate`]: false }));
+                  }
                 }}
                 onKeyUp={e => {
                   const target = e.target as HTMLInputElement;
@@ -758,7 +1063,7 @@ export default function NewTransactionPage() {
             name={`items.${index}.discount_type`}
             control={control}
             render={({ field }) => (
-              <Select value={field.value || ''} onValueChange={field.onChange}>
+              <Select value={field.value || 'none'} onValueChange={field.onChange}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Disc." />
                 </SelectTrigger>
@@ -832,8 +1137,22 @@ export default function NewTransactionPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+      {errorList.length > 0 && (
+        <div id="form-error-banner" className="p-4 bg-red-50 border-2 border-red-400 rounded-xl text-red-900 shadow-sm animate-in fade-in">
+          <div className="flex items-center gap-2 font-bold text-base text-red-800">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <span>{language === 'hi' ? 'कृपया निम्नलिखित कमियों को ठीक करें:' : 'Please check and fix the following required fields:'}</span>
+          </div>
+          <ul className="mt-2 list-disc list-inside text-sm space-y-1 text-red-800 pl-1 font-medium">
+            {errorList.map((err, i) => (
+              <li key={i}>{err}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {error && errorList.length === 0 && (
+        <div id="form-error-banner" className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
@@ -852,7 +1171,7 @@ export default function NewTransactionPage() {
           <CardDescription>Enter transaction information and materials</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
+          <form onSubmit={handleFormSubmit} className="space-y-6">
             {/* Customer & Type Row */}
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
@@ -868,10 +1187,17 @@ export default function NewTransactionPage() {
                   <Controller
                     name="customer_id"
                     control={control}
-                    rules={{ required: 'Please select a customer' }}
                     render={({ field }) => (
-                      <Select value={field.value || ''} onValueChange={field.onChange}>
-                        <SelectTrigger className={errors.customer_id ? 'border-red-500' : ''}>
+                      <Select
+                        value={field.value || ''}
+                        onValueChange={(val) => {
+                          field.onChange(val);
+                          if (fieldErrors['customer_id']) {
+                            setFieldErrors(prev => ({ ...prev, customer_id: false }));
+                          }
+                        }}
+                      >
+                        <SelectTrigger className={cn("w-full", fieldErrors['customer_id'] && 'border-red-500 ring-2 ring-red-200')}>
                           <SelectValue placeholder="Select customer" />
                         </SelectTrigger>
                         <SelectContent>
@@ -895,7 +1221,7 @@ export default function NewTransactionPage() {
                     )}
                   />
                 )}
-                {errors.customer_id && <p className="text-sm text-red-600">{errors.customer_id.message}</p>}
+                {fieldErrors['customer_id'] && <p className="text-sm text-red-600">Please select a customer</p>}
               </div>
 
               <div className="space-y-2">
@@ -905,10 +1231,17 @@ export default function NewTransactionPage() {
                 <Controller
                   name="transaction_type"
                   control={control}
-                  rules={{ required: 'Transaction type is required' }}
                   render={({ field }) => (
-                    <Select value={field.value || ''} onValueChange={field.onChange}>
-                      <SelectTrigger className={errors.transaction_type ? 'border-red-500' : ''}>
+                    <Select
+                      value={field.value || ''}
+                      onValueChange={(val) => {
+                        field.onChange(val);
+                        if (fieldErrors['transaction_type']) {
+                          setFieldErrors(prev => ({ ...prev, transaction_type: false }));
+                        }
+                      }}
+                    >
+                      <SelectTrigger className={cn("w-full", fieldErrors['transaction_type'] && 'border-red-500 ring-2 ring-red-200')}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -926,7 +1259,6 @@ export default function NewTransactionPage() {
                 {transactionType && (
                   <p className="text-sm text-gray-500">{getTypeDescription(transactionType, t)}</p>
                 )}
-                {errors.transaction_type && <p className="text-sm text-red-600">{errors.transaction_type.message}</p>}
               </div>
             </div>
 
@@ -937,18 +1269,23 @@ export default function NewTransactionPage() {
                 <Controller
                   name="transaction_date"
                   control={control}
-                  rules={{ required: 'Date is required' }}
                   render={({ field }) => (
                     <Input
                       id="transaction_date"
                       type="date"
-                      className={errors.transaction_date ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                      className={cn("w-full", fieldErrors['transaction_date'] && 'border-red-500 ring-2 ring-red-200')}
                       {...field}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        if (fieldErrors['transaction_date']) {
+                          setFieldErrors(prev => ({ ...prev, transaction_date: false }));
+                        }
+                      }}
                       disabled={isSubmitting}
                     />
                   )}
                 />
-                {errors.transaction_date && <p className="text-sm text-red-600">{errors.transaction_date.message}</p>}
+                {fieldErrors['transaction_date'] && <p className="text-sm text-red-600">Date is required</p>}
               </div>
 
               <div className="space-y-2">
@@ -973,7 +1310,6 @@ export default function NewTransactionPage() {
                       <Input
                         id="reference_number"
                         placeholder={refNumberLoading ? 'Generating...' : 'e.g., INV-2026-001'}
-                        className={errors.reference_number ? 'border-red-500' : ''}
                         {...field}
                         disabled={isSubmitting}
                       />
@@ -983,7 +1319,6 @@ export default function NewTransactionPage() {
                     <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
                   )}
                 </div>
-                {errors.reference_number && <p className="text-sm text-red-600">{errors.reference_number.message}</p>}
               </div>
 
               <div className="space-y-2">
@@ -992,8 +1327,8 @@ export default function NewTransactionPage() {
                   name="payment_method"
                   control={control}
                   render={({ field }) => (
-                    <Select value={field.value || ''} onValueChange={field.onChange}>
-                      <SelectTrigger className={errors.payment_method ? 'border-red-500' : ''}>
+                    <Select value={field.value || 'cash'} onValueChange={field.onChange}>
+                      <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select method" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1006,7 +1341,6 @@ export default function NewTransactionPage() {
                     </Select>
                   )}
                 />
-                {errors.payment_method && <p className="text-sm text-red-600">{errors.payment_method.message}</p>}
               </div>
             </div>
 
@@ -1026,27 +1360,41 @@ export default function NewTransactionPage() {
                     size="sm"
                     onClick={handleAddItem}
                     disabled={isSubmitting}
-                    className="gap-1"
+                    className="gap-1 text-blue-600 border-blue-200 hover:bg-blue-50"
                   >
                     <Plus className="h-4 w-4" />
                     Add Item
                   </Button>
                 </div>
 
-                {/* Items Table */}
-                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                {/* Mobile Item Cards View (Shown on screens < 768px) */}
+                <div className="md:hidden space-y-3">
+                  {items.map((item, index) => renderMobileItemCard(item, index))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddItem}
+                    disabled={isSubmitting}
+                    className="w-full py-2.5 flex items-center justify-center gap-1.5 border-dashed border-2 border-blue-300 text-blue-700 hover:bg-blue-50 font-medium text-sm"
+                  >
+                    <Plus className="h-4 w-4" /> Add Item
+                  </Button>
+                </div>
+
+                {/* Desktop Items Table View (Shown on md+ screens) */}
+                <div className="hidden md:block overflow-x-auto rounded-lg border border-gray-200">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-gray-50">
                         <TableHead className="w-10 text-center">#</TableHead>
-                        <TableHead className="min-w-[200px]">
+                        <TableHead className="min-w-[240px]">
                           Item Name <Button variant="ghost" size="icon" onClick={() => openAddMaterialModal()} className="ml-1 h-6 w-6 p-0" title="Add New Material"><Plus className="h-3 w-3" /></Button>
                         </TableHead>
-                        <TableHead className="w-32">Unit</TableHead>
+                        <TableHead className="w-28">Unit</TableHead>
                         <TableHead className="w-24 text-right">Qty</TableHead>
                         <TableHead className="w-28 text-right">Rate</TableHead>
                         <TableHead className="w-24 text-right">GST%</TableHead>
-                        <TableHead className="w-36">Disc.</TableHead>
+                        <TableHead className="w-28">Disc.</TableHead>
                         <TableHead className="w-24 text-right">Disc. Val</TableHead>
                         <TableHead className="w-32 text-right">Total</TableHead>
                         <TableHead className="w-10 text-center">Action</TableHead>
@@ -1066,7 +1414,7 @@ export default function NewTransactionPage() {
                     size="sm"
                     onClick={() => openAddMaterialModal()}
                     disabled={isSubmitting}
-                    className="gap-1.5 text-blue-600 border-dashed border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                    className="gap-1.5 text-blue-600 border-dashed border-blue-300 hover:bg-blue-50 hover:text-blue-700 text-xs"
                   >
                     <Plus className="h-4 w-4" />
                     <span>+ Add Manual Material (Save to Rate List)</span>
@@ -1082,7 +1430,6 @@ export default function NewTransactionPage() {
                 <Controller
                   name="amount"
                   control={control}
-                  rules={{ required: 'Amount is required', min: { value: 0.01, message: 'Amount must be positive' } }}
                   render={({ field }) => (
                     <Input
                       id="amount"
@@ -1090,16 +1437,22 @@ export default function NewTransactionPage() {
                       step="0.01"
                       min="0.01"
                       placeholder="0.00"
-                      className={errors.amount ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                      className={cn("w-full", fieldErrors['amount'] && 'border-red-500 ring-2 ring-red-200')}
                       {...field}
                       onBlur={field.onBlur}
                       disabled={isSubmitting}
                       value={field.value !== undefined && field.value !== null ? field.value : ''}
-                      onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                      onChange={e => {
+                        const val = parseFloat(e.target.value) || 0;
+                        field.onChange(val);
+                        if (fieldErrors['amount']) {
+                          setFieldErrors(prev => ({ ...prev, amount: false }));
+                        }
+                      }}
                     />
                   )}
                 />
-                {errors.amount && <p className="text-sm text-red-600">{errors.amount.message}</p>}
+                {fieldErrors['amount'] && <p className="text-sm text-red-600">Amount must be greater than 0</p>}
               </div>
             )}
 
@@ -1177,26 +1530,26 @@ export default function NewTransactionPage() {
             {isMaterialTransaction && (
               <Card className="bg-gray-50 border-blue-200">
                 <CardContent className="pt-4">
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-                    <div>
+                  <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+                    <div className="bg-white p-2.5 rounded-lg border border-gray-100">
                       <p className="text-xs text-gray-500">Subtotal</p>
                       <p className="font-semibold text-gray-900">{formatCurrency(transactionTotals.subtotal)}</p>
                     </div>
-                    <div>
+                    <div className="bg-white p-2.5 rounded-lg border border-gray-100">
                       <p className="text-xs text-gray-500">Item Discounts</p>
                       <p className="font-semibold text-red-600">-{formatCurrency(transactionTotals.discountAmount)}</p>
                     </div>
-                    <div>
+                    <div className="bg-white p-2.5 rounded-lg border border-gray-100">
                       <p className="text-xs text-gray-500">Taxable Amount</p>
                       <p className="font-semibold text-gray-900">{formatCurrency(transactionTotals.taxableAmount)}</p>
                     </div>
-                    <div>
+                    <div className="bg-white p-2.5 rounded-lg border border-gray-100">
                       <p className="text-xs text-gray-500">Total GST</p>
                       <p className="font-semibold text-blue-600">{formatCurrency(transactionTotals.totalGst)}</p>
                     </div>
-                    <div className="lg:col-span-1">
-                      <p className="text-xs text-gray-500">Grand Total</p>
-                      <p className="text-xl font-bold text-gray-900">{formatCurrency(finalGrandTotal)}</p>
+                    <div className="col-span-2 sm:col-span-1 bg-blue-50/90 p-2.5 rounded-lg border border-blue-300">
+                      <p className="text-xs text-blue-800 font-medium">Grand Total</p>
+                      <p className="text-xl font-bold text-blue-900">{formatCurrency(finalGrandTotal)}</p>
                     </div>
                   </div>
                   {watchedDiscountType !== 'none' && watchedDiscountValue > 0 && (

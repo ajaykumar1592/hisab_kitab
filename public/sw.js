@@ -1,11 +1,13 @@
-const CACHE_NAME = 'hisab-kitab-v1';
+const CACHE_NAME = 'hisab-kitab-v2';
 const urlsToCache = [
   '/',
   '/manifest.json',
   '/favicon.ico',
   '/icon-192.png',
   '/icon-512.png',
-  '/_next/static/css/',
+  '/icon-maskable-192.png',
+  '/icon-maskable-512.png',
+  '/apple-touch-icon.png',
 ];
 
 self.addEventListener('install', event => {

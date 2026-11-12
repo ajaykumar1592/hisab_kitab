@@ -4,7 +4,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
-import { Menu, X, Home, Users, CreditCard, Package, BarChart2, Settings, LogOut, ChevronRight, Smartphone, Building2, Receipt, Download, Globe } from 'lucide-react';
+import { Menu, X, Home, Users, CreditCard, Package, BarChart2, Settings, LogOut, ChevronRight, Smartphone, Building2, Receipt, Download, Globe, UserCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from '@/lib/i18n';
@@ -38,6 +38,7 @@ export function DashboardClientLayout({ business, children }: DashboardClientLay
     { name: t('rateList'), href: '/dashboard/rate-list', icon: Package },
     { name: t('receipts'), href: '/dashboard/receipts', icon: Receipt },
     { name: t('reports'), href: '/dashboard/reports', icon: BarChart2 },
+    { name: t('users') || 'Users', href: '/dashboard/users', icon: UserCheck },
     { name: t('settings'), href: '/dashboard/settings', icon: Settings },
   ];
 
@@ -74,11 +75,11 @@ export function DashboardClientLayout({ business, children }: DashboardClientLay
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
       );
       await supabase.auth.signOut();
+      await fetch('/api/auth/logout', { method: 'POST' });
     } catch (e) {
       // ignore
     }
-    router.push('/login');
-    router.refresh();
+    window.location.href = '/login';
   };
 
   const handleInstall = async () => {
@@ -191,33 +192,37 @@ export function DashboardClientLayout({ business, children }: DashboardClientLay
           </div>
 
           {/* PWA Actions */}
-          <div className="px-4 pb-4 border-t border-gray-200 pt-3">
+          <div className="px-4 pb-3 border-t border-gray-200 pt-3 space-y-1.5">
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="w-full justify-start gap-3 text-sm"
+              className="w-full justify-start gap-2.5 text-xs font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 border-gray-200 shadow-sm"
               onClick={handleInstall}
             >
-              <Smartphone className="h-4 w-4" />
-              {t('installApp')}
+              <Smartphone className="h-4 w-4 text-blue-600" />
+              <span>{t('installApp')}</span>
             </Button>
             <Button
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="w-full justify-start gap-3 text-sm"
+              className="w-full justify-start gap-2.5 text-xs font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 border-gray-200 shadow-sm"
               asChild
             >
               <Link href="/dashboard/export">
-                <Download className="h-4 w-4" />
-                {t('exportData')}
+                <Download className="h-4 w-4 text-blue-600" />
+                <span>{t('exportData')}</span>
               </Link>
             </Button>
           </div>
 
           {/* Bottom */}
-          <div className="p-4 border-t border-gray-200">
-            <Button variant="outline" className="w-full justify-start gap-3" onClick={handleLogout}>
-              <LogOut className="h-5 w-5" />
+          <div className="p-4 border-t border-gray-200 bg-gray-50/50">
+            <Button
+              variant="outline"
+              className="w-full justify-start gap-3 text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200 font-medium"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-4 w-4 text-red-500" />
               <span>{t('signOut')}</span>
             </Button>
           </div>

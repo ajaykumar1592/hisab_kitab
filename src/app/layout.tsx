@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "@/lib/i18n";
@@ -13,30 +13,32 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#0a1841",
+};
+
 export const metadata: Metadata = {
   title: "Hisab Kitab - Digital Khata Book",
   description: "Manage customer ledgers, rate lists, payments, and statements for Indian businesses",
   manifest: "/manifest.json",
-  themeColor: "#2563eb",
-  icons: [
-    {
-      rel: "apple-touch-icon",
-      sizes: "192x192",
-      url: "/icon-192.png",
-    },
-    {
-      rel: "icon",
-      type: "image/svg+xml",
-      sizes: "192x192",
-      url: "/icon-192.png",
-    },
-    {
-      rel: "icon",
-      type: "image/svg+xml",
-      sizes: "512x512",
-      url: "/icon-512.png",
-    },
-  ],
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "HisabKitab",
+  },
 };
 
 export default function RootLayout({

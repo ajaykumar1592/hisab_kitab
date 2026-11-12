@@ -72,7 +72,13 @@ export default function NewCustomerPage() {
   });
 
   const onInvalid = () => {
-    setError('Please check all required fields and fix validation errors before submitting.');
+    const errorMessages = Object.entries(errors)
+      .map(([field, err]: any) => err?.message)
+      .filter(Boolean);
+    const msg = errorMessages.length > 0
+      ? (language === 'hi' ? `कृपया निम्नलिखित त्रुटियों को ठीक करें: ${errorMessages.join(', ')}` : `Please check required fields: ${errorMessages.join(', ')}`)
+      : (language === 'hi' ? 'कृपया सभी आवश्यक फ़ील्ड भरें और त्रुटियों को ठीक करें।' : 'Please check all required fields and fix validation errors before submitting.');
+    setError(msg);
     const errorKeys = Object.keys(errors);
     if (errorKeys.length > 0) {
       setFocus(errorKeys[0] as any);
