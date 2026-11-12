@@ -351,10 +351,10 @@ export default function UsersPage() {
             size="sm"
             onClick={fetchUsers}
             disabled={loading}
-            className="gap-1.5"
+            className="gap-1.5 border-slate-300 text-slate-800 hover:text-slate-900 hover:bg-slate-100 font-semibold shadow-xs"
             title="Refresh list"
           >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            <RefreshCw className={cn("h-4 w-4 text-slate-600", loading && "animate-spin")} />
             <span className="hidden sm:inline">{isHindi ? 'रिफ्रेश' : 'Refresh'}</span>
           </Button>
 
@@ -363,7 +363,7 @@ export default function UsersPage() {
               setShowAddPassword(false);
               setShowAddModal(true);
             }}
-            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm font-semibold"
           >
             <Plus className="h-4 w-4" />
             <span>{isHindi ? '+ नया उपयोगकर्ता जोड़ें' : '+ Add User'}</span>
@@ -843,13 +843,14 @@ export default function UsersPage() {
                   variant="outline"
                   onClick={() => setShowAddModal(false)}
                   disabled={actionLoading}
+                  className="border-slate-300 text-slate-800 hover:bg-slate-100 hover:text-slate-900 font-semibold shadow-xs"
                 >
                   {isHindi ? 'रद्द करें' : 'Cancel'}
                 </Button>
                 <Button
                   type="submit"
                   disabled={actionLoading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm"
                 >
                   {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
                   <span>{isHindi ? 'उपयोगकर्ता बनाएं' : 'Create User'}</span>
@@ -881,7 +882,7 @@ export default function UsersPage() {
             <form onSubmit={handleEditUser} className="p-4 space-y-4">
               <div>
                 <Label className="text-xs font-semibold text-gray-700 mb-1 block">Email</Label>
-                <Input type="email" disabled value={selectedUser.email} className="bg-gray-100" />
+                <Input type="email" disabled value={selectedUser.email} className="bg-slate-100 text-slate-700 font-medium border-slate-300" />
               </div>
 
               <div>
@@ -892,6 +893,7 @@ export default function UsersPage() {
                   type="text"
                   value={editForm.full_name}
                   onChange={e => setEditForm(prev => ({ ...prev, full_name: e.target.value }))}
+                  className="text-slate-900 font-semibold border-slate-300"
                 />
               </div>
 
@@ -904,7 +906,7 @@ export default function UsersPage() {
                     value={editForm.role}
                     onValueChange={(val: any) => setEditForm(prev => ({ ...prev, role: val }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="font-semibold text-slate-900 border-slate-300">
                       <SelectValue placeholder="Role" />
                     </SelectTrigger>
                     <SelectContent>
@@ -924,7 +926,7 @@ export default function UsersPage() {
                     value={editForm.status}
                     onValueChange={(val: any) => setEditForm(prev => ({ ...prev, status: val }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="font-semibold text-slate-900 border-slate-300">
                       <SelectValue placeholder="Status" />
                     </SelectTrigger>
                     <SelectContent>
@@ -941,13 +943,14 @@ export default function UsersPage() {
                   variant="outline"
                   onClick={() => setShowEditModal(false)}
                   disabled={actionLoading}
+                  className="border-slate-300 text-slate-800 hover:bg-slate-100 hover:text-slate-900 font-semibold shadow-xs"
                 >
                   {isHindi ? 'रद्द करें' : 'Cancel'}
                 </Button>
                 <Button
                   type="submit"
                   disabled={actionLoading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm"
                 >
                   {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
                   <span>{isHindi ? 'सहेजें' : 'Save Changes'}</span>
@@ -1005,7 +1008,7 @@ export default function UsersPage() {
                     placeholder="Enter new password"
                     value={passwordForm.newPassword}
                     onChange={e => setPasswordForm({ newPassword: e.target.value })}
-                    className="pr-10"
+                    className="pr-10 text-slate-900 font-medium border-slate-300"
                   />
                   <button
                     type="button"
@@ -1023,13 +1026,14 @@ export default function UsersPage() {
                   variant="outline"
                   onClick={() => setShowPasswordModal(false)}
                   disabled={actionLoading}
+                  className="border-slate-300 text-slate-800 hover:bg-slate-100 hover:text-slate-900 font-semibold shadow-xs"
                 >
                   {isHindi ? 'रद्द करें' : 'Cancel'}
                 </Button>
                 <Button
                   type="submit"
                   disabled={actionLoading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm"
                 >
                   {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
                   <span>{isHindi ? 'पासवर्ड अपडेट करें' : 'Update Password'}</span>
@@ -1062,6 +1066,7 @@ export default function UsersPage() {
                 variant="outline"
                 onClick={() => setShowDeleteModal(false)}
                 disabled={actionLoading}
+                className="border-slate-300 text-slate-800 hover:bg-slate-100 hover:text-slate-900 font-semibold shadow-xs"
               >
                 {isHindi ? 'रद्द करें' : 'Cancel'}
               </Button>
@@ -1069,6 +1074,7 @@ export default function UsersPage() {
                 variant="destructive"
                 onClick={handleDeleteUser}
                 disabled={actionLoading}
+                className="bg-red-600 hover:bg-red-700 text-white font-semibold shadow-sm"
               >
                 {actionLoading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
                 <span>{isHindi ? 'हां, हटाएं' : 'Delete'}</span>

@@ -58,37 +58,67 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // If include_items is true, fetch transaction items for each transaction
-    let transactionsWithItems = transactions || [];
-    if (includeItems && transactions && transactions.length > 0) {
-      const transactionIds = transactions.map(t => t.id);
-      const { data: items, error: itemsError } = await supabase
-        .from('transaction_items')
-        .select('*')
-        .in('transaction_id', transactionIds)
-        .order('sort_order', { ascending: true });
+    const transactionList = transactions || [];
+    const transactionIds = transactionList.map(t => t.id);
 
-      if (!itemsError && items) {
-        // Group items by transaction_id
-        const itemsByTransaction = items.reduce((acc, item) => {
-          if (!acc[item.transaction_id]) {
-            acc[item.transaction_id] = [];
-          }
-          acc[item.transaction_id].push(item);
-          return acc;
-        }, {} as Record<string, any[]>);
+    // Fetch transaction items so we have item details & description fallbacks
+    let itemsByTransaction: Record<string, any[]> = {};
+    if (transactionIds.length > 0) {
+      try {
+        const { data: items, error: itemsError } = await supabase
+          .from('transaction_items')
+          .select('*')
+          .in('transaction_id', transactionIds)
+          .order('sort_order', { ascending: true });
 
-        transactionsWithItems = transactions.map(t => ({
-          ...t,
-          items: itemsByTransaction[t.id] || [],
-        }));
-      } else if (itemsError) {
-        console.warn('Could not fetch transaction items (table may not exist):', itemsError.message);
+        if (!itemsError && items) {
+          itemsByTransaction = items.reduce((acc, item) => {
+            if (!acc[item.transaction_id]) {
+              acc[item.transaction_id] = [];
+            }
+            acc[item.transaction_id].push(item);
+            return acc;
+          }, {} as Record<string, any[]>);
+        } else if (itemsError) {
+          console.warn('Could not fetch transaction items:', itemsError.message);
+        }
+      } catch (err) {
+        console.warn('Error fetching transaction items:', err);
       }
     }
 
+    const formattedTransactions = transactionList.map(t => {
+      const cust = Array.isArray(t.customers) ? t.customers[0] : t.customers;
+      const customerName = cust?.name || (t as any).customer_name || 'Customer';
+      const customerMobile = cust?.mobile_number || (t as any).customer_mobile || '';
+      const items = itemsByTransaction[t.id] || [];
+
+      let desc = t.description;
+      if (!desc || desc.trim() === '') {
+        if (items.length > 0) {
+          desc = items
+            .map((i: any) => `${i.item_name}${i.quantity ? ` (${i.quantity} ${i.unit || 'PCS'})` : ''}`)
+            .join(', ');
+        } else if (t.reference_number) {
+          const typeName = t.transaction_type === 'credit' ? 'Credit Sale' : t.transaction_type === 'payment' ? 'Payment Received' : 'Transaction';
+          desc = `${typeName} #${t.reference_number}`;
+        } else {
+          const typeName = t.transaction_type === 'credit' ? 'Credit Sale' : t.transaction_type === 'payment' ? 'Payment Received' : '';
+          desc = typeName;
+        }
+      }
+
+      return {
+        ...t,
+        customer_name: customerName,
+        customer_mobile: customerMobile,
+        description: desc || '',
+        items: includeItems || items.length > 0 ? items : [],
+      };
+    });
+
     return NextResponse.json({
-      transactions: transactionsWithItems,
+      transactions: formattedTransactions,
       pagination: {
         page,
         limit,
@@ -223,6 +253,17 @@ export async function POST(request: NextRequest) {
       invoiceDate = validation.data.transaction_date.split('T')[0];
     }
 
+    // Auto generate description from items if user did not provide one
+    let finalDescription = validation.data.description?.trim() || null;
+    if (!finalDescription && items.length > 0) {
+      const validItems = items.filter(it => it.item_name && it.item_name.trim());
+      if (validItems.length > 0) {
+        finalDescription = validItems
+          .map(it => `${it.item_name}${it.quantity ? ` (${it.quantity} ${it.unit || 'PCS'})` : ''}`)
+          .join(', ');
+      }
+    }
+
     // Build the basic insert payload - only include fields that exist in base schema
     const basicPayload = {
       business_id: businessId,
@@ -230,7 +271,7 @@ export async function POST(request: NextRequest) {
       transaction_date: validation.data.transaction_date,
       transaction_type: validation.data.transaction_type,
       amount: transactionAmount,
-      description: validation.data.description || null,
+      description: finalDescription,
       reference_number: validation.data.reference_number || null,
       payment_method: validation.data.payment_method || null,
       created_by: user?.id || null,

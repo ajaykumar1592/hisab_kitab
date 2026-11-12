@@ -648,15 +648,22 @@ export default function NewTransactionPage() {
 
     try {
       const headers = await getAuthHeaders();
+      const validItems = data.items?.filter(item => item.item_name && item.item_name.trim()) || [];
+      let finalDesc = data.description?.trim() || null;
+      if (!finalDesc && validItems.length > 0) {
+        finalDesc = validItems.map(i => `${i.item_name}${i.quantity ? ` (${i.quantity} ${i.unit || 'PCS'})` : ''}`).join(', ');
+      }
+
       const response = await fetch('/api/transactions', {
         method: 'POST',
         headers,
         body: JSON.stringify({
           ...data,
+          description: finalDesc,
           amount: finalGrandTotal || data.amount,
           reference_number: data.reference_number || null,
           payment_method: data.payment_method || null,
-          items: data.items?.map(item => ({
+          items: validItems.map(item => ({
             ...item,
             item_code: item.item_code || null,
             description: item.description || null,

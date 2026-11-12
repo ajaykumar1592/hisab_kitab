@@ -271,13 +271,13 @@ export function DashboardClientLayout({ business, children }: DashboardClientLay
             {/* PWA Status */}
             {!isInstalled && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
                 onClick={handleInstall}
-                className="hidden sm:flex"
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-full border-slate-300 bg-white text-slate-800 hover:text-blue-600 hover:border-blue-400 hover:bg-blue-50 text-xs font-semibold shadow-xs"
               >
-                <Smartphone className="mr-1 h-4 w-4" />
-                {t('installApp')}
+                <Smartphone className="h-3.5 w-3.5 text-blue-600" />
+                <span>{t('installApp')}</span>
               </Button>
             )}
 
