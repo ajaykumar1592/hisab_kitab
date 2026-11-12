@@ -13,6 +13,7 @@ import Link from 'next/link';
 import { Download, Loader2, Calendar, FileText, BarChart2, TrendingUp, AlertTriangle, Eye } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 
 interface OutstandingReport {
   customer_id: string;
@@ -171,6 +172,16 @@ export default function ReportsPage() {
 
   const [dailyData, setDailyData] = useState<DailyReport[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyReport[]>([]);
+
+  const filteredOutstanding = outstandingData.filter(item => {
+    const matchesSearch = !searchTerm || item.customer_name?.toLowerCase().includes(searchTerm.toLowerCase()) || item.mobile_number?.includes(searchTerm);
+    if (!matchesSearch) return false;
+    if (filterType === 'all') return true;
+    if (filterType === 'receivable') return item.balance_type === 'receivable';
+    if (filterType === 'payable') return item.balance_type === 'payable';
+    if (filterType === 'overdue') return item.days_overdue > 0;
+    return true;
+  });
 
   const getAgingBucket = (days: number) => {
     if (days <= 0) return 'Current';
@@ -435,7 +446,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockDailyData.map((item, i) => (
+                  {dailyData.map((item, i) => (
                     <TableRow key={i} className="hover:bg-gray-50">
                       <TableCell className="font-medium">{formatDate(item.date)}</TableCell>
                       <TableCell className="text-right text-red-600 font-medium">{formatCurrency(item.total_sales)}</TableCell>
@@ -482,7 +493,7 @@ export default function ReportsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {mockMonthlyData.map((item, i) => (
+                  {monthlyData.map((item, i) => (
                     <TableRow key={i} className="hover:bg-gray-50">
                       <TableCell className="font-medium">{item.month}</TableCell>
                       <TableCell className="text-right text-red-600 font-medium">{formatCurrency(item.total_sales)}</TableCell>

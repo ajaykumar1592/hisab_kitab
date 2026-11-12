@@ -72,7 +72,7 @@ export const transactionItemUpdateSchema = transactionItemSchema.partial();
 export const productSchema = z.object({
   item_name: z.string().min(1, 'Item name is required').max(255),
   item_code: z.string().max(50).optional().nullable().or(z.literal('')),
-  category_id: z.string().min(1, 'Category ID is required'),
+  category_id: z.string().optional().nullable().or(z.literal('')),
   description: z.string().max(1000).optional().nullable().or(z.literal('')),
   unit: z.string().min(1, 'Unit is required').max(50),
   quantity: z.number().min(0, 'Quantity must be positive').default(1),
@@ -87,10 +87,7 @@ export const productSchema = z.object({
 
 export const productUpdateSchema = productSchema.partial();
 
-export const productCreateSchema = productSchema.refine(
-  (data) => data.category_id !== undefined,
-  { message: 'Category is required', path: ['category_id'] }
-);
+export const productCreateSchema = productSchema;
 
 // Product category schemas
 export const productCategorySchema = z.object({

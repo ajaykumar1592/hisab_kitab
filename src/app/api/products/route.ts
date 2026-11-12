@@ -133,6 +133,15 @@ export async function POST(request: NextRequest) {
 
         validCategoryId = firstCategory?.id || null;
       }
+    } else {
+      const { data: firstCategory } = await supabase
+        .from('product_categories')
+        .select('id')
+        .eq('business_id', businessId)
+        .limit(1)
+        .single();
+
+      validCategoryId = firstCategory?.id || null;
     }
 
     const rateNum = Number(validation.data.rate) || 0;

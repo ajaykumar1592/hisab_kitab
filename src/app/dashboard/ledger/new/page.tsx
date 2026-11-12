@@ -34,19 +34,20 @@ import {
 import { cn, formatCurrency } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
 import { useTranslation } from '@/lib/i18n';
+import { ProductSearchSelect } from '@/components/products/product-search-select';
 
 // Product/Material type from Rate List
 interface Product {
   id: string;
   item_name: string;
   item_code: string | null;
-  category: string;
-  category_id: string;
+  category?: string;
+  category_id?: string;
   unit: string;
-  quantity: number;
+  quantity?: number;
   rate: number;
   gst_percentage: number;
-  final_rate: number;
+  final_rate?: number;
   status: string;
   hsn_code?: string;
   description?: string;
@@ -133,7 +134,7 @@ const unitOptions = ['PCS', 'MTR', 'KG', 'BAG', 'BOX', 'SET', 'ROLL', 'LTR', 'SQ
 const materialSchema = z.object({
   item_name: z.string().min(1, 'Item name is required').max(255),
   item_code: z.string().max(50).optional().nullable(),
-  category_id: z.string().min(1, 'Category is required'),
+  category_id: z.string().optional().nullable().or(z.literal('')),
   description: z.string().max(1000).optional().nullable(),
   unit: z.string().min(1, 'Unit is required').max(50),
   quantity: z.number().positive().min(0.001).default(1),
@@ -165,6 +166,7 @@ export default function NewTransactionPage() {
   const [materialFormError, setMaterialFormError] = useState<string | null>(null);
   const [materialFormSubmitting, setMaterialFormSubmitting] = useState(false);
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
+  const [newMaterialInitialName, setNewMaterialInitialName] = useState('');
 
   const {
     register,
@@ -320,18 +322,22 @@ export default function NewTransactionPage() {
   };
 
   // Calculate line totals
-  const calculateLineTotals = (item: TransactionItemForm) => {
-    const lineSubtotal = (item.quantity || 0) * (item.rate || 0);
+  const calculateLineTotals = (item: any) => {
+    const qty = typeof item?.quantity === 'number' ? item.quantity : parseFloat(item?.quantity) || 0;
+    const rate = typeof item?.rate === 'number' ? item.rate : parseFloat(item?.rate) || 0;
+    const lineSubtotal = qty * rate;
     let discountAmount = 0;
 
-    if (item.discount_type === 'percentage') {
-      discountAmount = (lineSubtotal * (item.discount_value || 0)) / 100;
-    } else if (item.discount_type === 'fixed') {
-      discountAmount = item.discount_value || 0;
+    const discVal = typeof item?.discount_value === 'number' ? item.discount_value : parseFloat(item?.discount_value) || 0;
+    if (item?.discount_type === 'percentage') {
+      discountAmount = (lineSubtotal * discVal) / 100;
+    } else if (item?.discount_type === 'fixed') {
+      discountAmount = discVal;
     }
 
-    const taxableAmount = lineSubtotal - discountAmount;
-    const gstAmount = (taxableAmount * (item.gst_percentage || 0)) / 100;
+    const taxableAmount = Math.max(0, lineSubtotal - discountAmount);
+    const gstPct = typeof item?.gst_percentage === 'number' ? item.gst_percentage : parseFloat(item?.gst_percentage) || 0;
+    const gstAmount = (taxableAmount * gstPct) / 100;
     const lineTotal = taxableAmount + gstAmount;
 
     return { lineSubtotal, discountAmount, taxableAmount, gstAmount, lineTotal };
@@ -385,17 +391,17 @@ export default function NewTransactionPage() {
   };
 
   const handleProductSelect = (index: number, product: Product) => {
-    setValue(`items.${index}.product_id`, product.id);
-    setValue(`items.${index}.item_name`, product.item_name);
-    setValue(`items.${index}.item_code`, product.item_code);
-    setValue(`items.${index}.unit`, product.unit);
-    setValue(`items.${index}.rate`, product.rate);
-    setValue(`items.${index}.gst_percentage`, product.gst_percentage || 0);
-    setValue(`items.${index}.description`, product.description || '');
-    // Keep existing quantity if user already entered one, otherwise default to 1
+    setValue(`items.${index}.product_id`, product.id, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    setValue(`items.${index}.item_name`, product.item_name, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    setValue(`items.${index}.item_code`, product.item_code || '', { shouldDirty: true, shouldTouch: true });
+    setValue(`items.${index}.unit`, product.unit, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    setValue(`items.${index}.rate`, Number(product.rate) || 0, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+    setValue(`items.${index}.gst_percentage`, Number(product.gst_percentage) || 0, { shouldDirty: true, shouldTouch: true });
+    setValue(`items.${index}.description`, product.description || '', { shouldDirty: true, shouldTouch: true });
+    // Default quantity to 1 if not set or <= 0
     const currentQty = watch(`items.${index}.quantity`);
-    if (!currentQty || currentQty === 1) {
-      setValue(`items.${index}.quantity`, 1);
+    if (!currentQty || currentQty <= 0) {
+      setValue(`items.${index}.quantity`, 1, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
     }
   };
 
@@ -434,8 +440,14 @@ export default function NewTransactionPage() {
     });
   };
 
-  const openAddMaterialModal = () => {
-    setSelectedItemIndex(items.length);
+  const openAddMaterialModal = (searchTerm: string = '', itemIndex?: number) => {
+    setNewMaterialInitialName(searchTerm);
+    if (typeof itemIndex === 'number') {
+      setSelectedItemIndex(itemIndex);
+    } else {
+      const emptyIdx = items.findIndex((_, idx) => !watch(`items.${idx}.item_name`));
+      setSelectedItemIndex(emptyIdx >= 0 ? emptyIdx : items.length);
+    }
     setShowAddMaterialModal(true);
   };
 
@@ -445,15 +457,15 @@ export default function NewTransactionPage() {
 
     const formData = new FormData(e.currentTarget);
     const materialData = {
-      item_name: formData.get('item_name') as string,
-      item_code: formData.get('item_code') as string || null,
-      category_id: formData.get('category_id') as string,
-      description: formData.get('description') as string || '',
-      unit: formData.get('unit') as string,
+      item_name: (formData.get('item_name') as string) || newMaterialInitialName || '',
+      item_code: (formData.get('item_code') as string) || null,
+      category_id: (formData.get('category_id') as string) || null,
+      description: (formData.get('description') as string) || '',
+      unit: (formData.get('unit') as string) || 'PCS',
       quantity: parseFloat(formData.get('quantity') as string) || 1,
       rate: parseFloat(formData.get('rate') as string) || 0,
       gst_percentage: parseFloat(formData.get('gst_percentage') as string) || 0,
-      hsn_code: formData.get('hsn_code') as string || '',
+      hsn_code: (formData.get('hsn_code') as string) || '',
       status: 'active',
     };
 
@@ -487,12 +499,26 @@ export default function NewTransactionPage() {
       // Add to products list
       setProducts(prev => [...prev, newProduct]);
 
-      // Select this product in the current item row
-      if (selectedItemIndex !== null) {
+      // Select this product in the target item row or append new row
+      if (selectedItemIndex !== null && selectedItemIndex < items.length) {
         handleProductSelect(selectedItemIndex, newProduct);
+      } else {
+        append({
+          item_name: newProduct.item_name,
+          product_id: newProduct.id,
+          item_code: newProduct.item_code || '',
+          unit: newProduct.unit,
+          quantity: 1,
+          rate: Number(newProduct.rate) || 0,
+          gst_percentage: Number(newProduct.gst_percentage) || 0,
+          discount_type: 'none',
+          discount_value: 0,
+          sort_order: items.length,
+        });
       }
 
       setShowAddMaterialModal(false);
+      setNewMaterialInitialName('');
       (e.target as HTMLFormElement).reset();
     } catch (err: any) {
       setMaterialFormError(err.message || 'Error creating material');
@@ -572,7 +598,8 @@ export default function NewTransactionPage() {
 
   // Render item row
   const renderItemRow = (item: any, index: number) => {
-    const totals = calculateLineTotals(item);
+    const currentItem = watchedItems[index] || item;
+    const totals = calculateLineTotals(currentItem);
 
     return (
       <TableRow key={item.id || index} className="hover:bg-gray-50">
@@ -602,29 +629,21 @@ export default function NewTransactionPage() {
             <Minus className="h-3 w-3" />
           </Button>
         </TableCell>
-        <TableCell className="w-10 text-center">
+        <TableCell className="min-w-[220px]">
           <Controller
             name={`items.${index}.item_name`}
             control={control}
             rules={{ required: 'Item name is required' }}
             render={({ field }) => (
-              <div className="relative">
-                <Input
-                  {...field}
-                  placeholder="Item name"
-                  className="pr-10"
-                  disabled={isSubmitting}
-                />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
-                  onClick={() => { setSelectedItemIndex(index); setShowAddMaterialModal(true); }}
-                  title="Search/Select from Rate List"
-                >
-                  <Package className="h-4 w-4" />
-                </Button>
-              </div>
+              <ProductSearchSelect
+                products={products}
+                value={field.value || ''}
+                onSelectProduct={(product) => handleProductSelect(index, product)}
+                onChangeManual={(val) => field.onChange(val)}
+                onAddNewMaterial={(searchTerm) => openAddMaterialModal(searchTerm, index)}
+                disabled={isSubmitting}
+                placeholder="Search material or type name..."
+              />
             )}
           />
           {errors.items?.[index]?.item_name && (
@@ -658,14 +677,22 @@ export default function NewTransactionPage() {
             render={({ field }) => (
               <Input
                 type="number"
-                step="0.001"
+                step="any"
                 min="0.001"
                 className="text-right"
                 {...field}
                 onBlur={field.onBlur}
                 disabled={isSubmitting}
                 value={field.value !== undefined && field.value !== null ? field.value : ''}
-                onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                onChange={e => {
+                  const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                  field.onChange(val);
+                }}
+                onKeyUp={e => {
+                  const target = e.target as HTMLInputElement;
+                  const val = target.value === '' ? 0 : parseFloat(target.value) || 0;
+                  setValue(`items.${index}.quantity`, val);
+                }}
               />
             )}
           />
@@ -678,14 +705,22 @@ export default function NewTransactionPage() {
             render={({ field }) => (
               <Input
                 type="number"
-                step="0.01"
+                step="any"
                 min="0"
                 className="text-right"
                 {...field}
                 onBlur={field.onBlur}
                 disabled={isSubmitting}
                 value={field.value !== undefined && field.value !== null ? field.value : ''}
-                onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                onChange={e => {
+                  const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                  field.onChange(val);
+                }}
+                onKeyUp={e => {
+                  const target = e.target as HTMLInputElement;
+                  const val = target.value === '' ? 0 : parseFloat(target.value) || 0;
+                  setValue(`items.${index}.rate`, val);
+                }}
               />
             )}
           />
@@ -697,7 +732,7 @@ export default function NewTransactionPage() {
             render={({ field }) => (
               <Input
                 type="number"
-                step="0.01"
+                step="any"
                 min="0"
                 max="100"
                 className="text-right"
@@ -705,7 +740,15 @@ export default function NewTransactionPage() {
                 onBlur={field.onBlur}
                 disabled={isSubmitting}
                 value={field.value !== undefined && field.value !== null ? field.value : ''}
-                onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                onChange={e => {
+                  const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                  field.onChange(val);
+                }}
+                onKeyUp={e => {
+                  const target = e.target as HTMLInputElement;
+                  const val = target.value === '' ? 0 : parseFloat(target.value) || 0;
+                  setValue(`items.${index}.gst_percentage`, val);
+                }}
               />
             )}
           />
@@ -735,15 +778,23 @@ export default function NewTransactionPage() {
             render={({ field }) => (
               <Input
                 type="number"
-                step="0.01"
+                step="any"
                 min="0"
-                max={item.discount_type === 'percentage' ? 100 : undefined}
+                max={currentItem?.discount_type === 'percentage' ? 100 : undefined}
                 className="text-right"
                 {...field}
                 onBlur={field.onBlur}
-                disabled={isSubmitting || item.discount_type === 'none'}
+                disabled={isSubmitting || currentItem?.discount_type === 'none'}
                 value={field.value !== undefined && field.value !== null ? field.value : ''}
-                onChange={e => field.onChange(parseFloat(e.target.value) || 0)}
+                onChange={e => {
+                  const val = e.target.value === '' ? '' : parseFloat(e.target.value) || 0;
+                  field.onChange(val);
+                }}
+                onKeyUp={e => {
+                  const target = e.target as HTMLInputElement;
+                  const val = target.value === '' ? 0 : parseFloat(target.value) || 0;
+                  setValue(`items.${index}.discount_value`, val);
+                }}
               />
             )}
           />
@@ -989,7 +1040,7 @@ export default function NewTransactionPage() {
                       <TableRow className="bg-gray-50">
                         <TableHead className="w-10 text-center">#</TableHead>
                         <TableHead className="min-w-[200px]">
-                          Item Name <Button variant="ghost" size="icon" onClick={openAddMaterialModal} className="ml-1 h-6 w-6 p-0" title="Add New Material"><Plus className="h-3 w-3" /></Button>
+                          Item Name <Button variant="ghost" size="icon" onClick={() => openAddMaterialModal()} className="ml-1 h-6 w-6 p-0" title="Add New Material"><Plus className="h-3 w-3" /></Button>
                         </TableHead>
                         <TableHead className="w-32">Unit</TableHead>
                         <TableHead className="w-24 text-right">Qty</TableHead>
@@ -1008,17 +1059,19 @@ export default function NewTransactionPage() {
                 </div>
 
                 {/* Add New Material Link */}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={openAddMaterialModal}
-                  disabled={isSubmitting}
-                  className="w-full justify-start text-left gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>Add New Material (create and add to Rate List)</span>
-                </Button>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openAddMaterialModal()}
+                    disabled={isSubmitting}
+                    className="gap-1.5 text-blue-600 border-dashed border-blue-300 hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>+ Add Manual Material (Save to Rate List)</span>
+                  </Button>
+                </div>
               </div>
             ) : (
               // Simple amount field for non-material transactions
@@ -1201,6 +1254,7 @@ export default function NewTransactionPage() {
                 <Input
                   id="matItemName"
                   name="item_name"
+                  defaultValue={newMaterialInitialName}
                   placeholder="e.g., UltraTech Cement 53 Grade"
                   required
                   autoFocus
@@ -1217,10 +1271,10 @@ export default function NewTransactionPage() {
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="matCategory">Category *</Label>
-                <Select name="category_id" required>
+                <Label htmlFor="matCategory">Category (Optional)</Label>
+                <Select name="category_id">
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select category" />
+                    <SelectValue placeholder="Select category (Optional)" />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map(cat => (
